@@ -212,6 +212,7 @@ Priority: **Must / Should / Could**. Priorities on proposed items are proposals.
 | Permissions | Shown (browser-side) | Partially implemented (scope services for other modules) | Permission matrix (§5) |
 | CV integration | Not shown | Not implemented | No Module 05 contract |
 | Navigation | Shown | Not implemented | — |
+| Quick search presets and suggested questions | Shown (hard-coded in the frontend) | Not implemented | Who manages them (SD-DEC-033) |
 
 ---
 
@@ -439,6 +440,21 @@ Each capability lists eight fields: current demo, existing backend support, veri
 - **Target:** same, with role visibility from the backend.
 - **Missing:** backend-confirmed roles.
 - **Decisions:** SD-DEC-014, SD-DEC-021.
+
+### SD-CAP-18 Quick search presets and suggested questions
+- **Demo:** Shown, two separate lists, both **hard-coded in the frontend**:
+  - **Quick search cards** (`QUICK_SEARCHES` in `features/intelligence/intelligenceModel.ts`): eight one-click searches. Each is a fixed filter set and sort order, e.g. "Same project for more than 2 years", "On bench now", "Rolling off in the next 90 days", "People working on a project" (asks for a project first). They use no AI; a click fills the same filters as Structured search and runs them.
+  - **Suggested AI questions** (`QUICK_PROMPTS` and `PROMPT_GROUPS` in `pages/SearchDiscovery/index.tsx`): the "Try:" chips and the grouped examples under "More examples & tips". A click types the question into AI Quick Search.
+- **How they are updated today:** a developer edits the list in code and redeploys. No user or admin can change them [CODE].
+- **Backend support:** none. The saved-search model (criteria + sort + optional question) could store presets.
+- **Production readiness:** Not implemented.
+- **Target:**
+  - presets and suggested questions are data, not code;
+  - authorised users manage them without a release;
+  - optionally, frequently used searches are suggested.
+- **Missing:** storage, an admin screen, validation of presets against the catalogue, a usage-statistics policy.
+- **Decisions:** SD-DEC-033 (who manages presets; whether usage-based suggestions are allowed).
+- **Next steps:** SD-RM-3.5.
 
 ### SD-CAP-17 Permissions and security
 - **Demo:** Shown (browser-side rules mirroring scope services).
@@ -822,6 +838,10 @@ Columns: priority · knowledge status · production implementation · demo · mo
 | SD-FR-102 | Saved-search sharing | Could | Proposed | Not impl. | Not shown | 04 | SD-DEC-017 |
 | SD-FR-103 | Re-run under current permissions | Must | Proposed | Not impl. | Shown | 04 | — |
 | SD-FR-104 | Saved searches page (Workforce Intelligence) | Should | Proposed [WR] | Not impl. | Shown | 04 | — |
+| SD-FR-105 | Quick search presets (one-click searches) | Should | Verified [WB: "three search modes: structured, quick and AI"] | Not impl. | Shown (hard-coded) | 04 | — |
+| SD-FR-106 | Presets managed without a release | Should | Proposed | Not impl. | Not shown | 04 | SD-DEC-033 |
+| SD-FR-107 | Suggested AI questions maintained as data | Should | Proposed | Not impl. | Shown (hard-coded) | 04 | SD-DEC-033 |
+| SD-FR-108 | Suggestions based on usage | Could | Proposed | Not impl. | Not shown | 04 | SD-DEC-033, SD-DEC-015 |
 | SD-FR-110 | Result list content | Must | Verified [WB; OS §5.7] | Not impl. | Shown | 04 | — |
 | SD-FR-111 | Person detail | Should | Proposed | Not impl. | Shown | 04 | SD-DEC-008 |
 | SD-FR-120 | Export result lists | Should | Verified [WB] | Not impl. | Shown (browser) | 04 | SD-DEC-022 |
@@ -1007,6 +1027,26 @@ Business value, behaviour and acceptance criteria. Sources and statuses are in �
 - **SD-FR-102** — AC: a shared search runs under the receiver's permissions.
 - **SD-FR-103** — AC: re-runs use the owner's current role and scope.
 - **SD-FR-104** — AC: a Saved searches page under Workforce Intelligence shows name, mode, question, criteria, answer type, last run, with Run and confirmed Delete.
+- **SD-FR-105** — *Value:* common questions in one click, without typing or AI.
+  - AC1: the Quick search tab lists presets with a name and a one-line description.
+  - AC2: one click runs the preset's fixed criteria and sort order. The criteria appear as visible chips and can be refined in Structured search.
+  - AC3: a preset that needs input (e.g. a project) asks for it before running.
+  - AC4: presets respect the user's permissions like any search; a preset using restricted fields (e.g. seniority) shows the same warning as Structured search.
+  - *Demo AC: eight presets hard-coded in `intelligenceModel.ts`; changed only by a code release.*
+- **SD-FR-106** — *Value:* PMO can adapt quick searches to current needs without waiting for a release.
+  - AC1: authorised users (SD-DEC-033) can add, edit, reorder, hide and delete presets.
+  - AC2: a preset is stored like a saved search (criteria, sort, optional question), shared with all users allowed to search.
+  - AC3: presets are validated against the skill catalogue and filter ranges when saved; a preset that becomes invalid (e.g. a skill removed from the catalogue) is hidden and flagged to its owner.
+  - AC4: changes are audit-logged.
+- **SD-FR-107** — *Value:* example questions stay relevant and teach users what AI Quick Search can do.
+  - AC1: the "Try:" questions and grouped examples are stored as data, managed like SD-FR-106.
+  - AC2: each suggested question is checked to be fully understood by the interpreter (no "not understood" words) before it is published.
+  - AC3: English and Serbian examples can be maintained separately.
+  - *Demo AC: hard-coded in `SearchDiscovery/index.tsx`.*
+- **SD-FR-108** — *Value:* the most useful searches surface by themselves.
+  - AC1: the most frequently run searches (from saved searches and history, aggregated across users) can be offered as suggestions.
+  - AC2: suggestions never reveal another user's individual search history or names typed into questions; only criteria patterns used by at least an agreed number of users are shown.
+  - AC3: allowed only if approved under SD-DEC-033 and the retention rules of SD-DEC-015.
 
 **C.12 Results**
 - **SD-FR-110** — AC: each row shows:
@@ -1156,6 +1196,7 @@ No estimates or dates. "Independent" means the item can start without open decis
 | SD-RM-3.2 | Saved searches and history in the database | SD-FR-100–104 | Must | 1.1; SD-DEC-015 | Retention | Survives logout and device change; per-user isolation tested | Not started | Yes |
 | SD-RM-3.3 | External applicant figure (if kept) | SD-FR-005, 090–093 | Should | SD-GAP-07; SD-DEC-011/030 | Client data | Correct monthly count on real data; names only | Not started | Blocked |
 | SD-RM-3.4 | Person profile link and CV link | SD-FR-122, SD-GAP-08 | Could | Module 05 contract | — | Link opens the owning module | Not started | Blocked |
+| SD-RM-3.5 | Quick search presets and suggested questions as managed data; optional usage-based suggestions | SD-FR-105–108 | Should | SD-RM-3.2 (saved-search storage); SD-DEC-033 | Presets drift from the catalogue | Authorised user changes a preset without a release; invalid presets hidden | Not started | After 3.2 (decision needed to finish) |
 
 ### Phase 4 — Production hardening
 
@@ -1235,6 +1276,7 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 | SD-DEC-029 | PMO breadth (applicants, seniority, cost) | Consistency vs privacy | SD-ASM-003 / wider | SD-ASM-003 | PMO + HR + DPO |
 | SD-DEC-030 | Recruiting figure in S&D | Boundary, privacy | Keep count / remove | Keep count with link if SD-DEC-011 resolved | HR + PMO |
 | SD-DEC-032 | Semantic search content source and technology | Results quality, cost | Content: project descriptions, demand texts, CVs (if available). Technology: pgvector / Azure AI Search | pgvector first; Azure AI Search if CV documents are indexed | Product + architecture |
+| SD-DEC-033 | Who manages quick search presets and suggested questions; are usage-based suggestions allowed? | Relevance of presets vs control and privacy | Developers only (today) / PMO + Admin in-app / usage-based | PMO + Admin manage in-app; usage-based only with aggregation and retention rules | PMO + DPO |
 | SD-DEC-031 | Alternative suggestion policy | Users may read alternatives as matches | SD-DEF-015 / fewer / none | SD-DEF-015 | PMO |
 
 ### 11.2 Source conflicts
