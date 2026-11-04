@@ -542,6 +542,7 @@ export const searchPeople = (
     criteria: describeFilters({ ...filters, seniority }),
     warnings,
     scope: rule.scope,
+    alternatives: [],
   };
 };
 

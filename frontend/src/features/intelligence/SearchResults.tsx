@@ -20,8 +20,9 @@ import {
   Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
-import type { PersonSkillView, SearchResultRow, SearchSort } from '../../types/intelligence.types';
+import type { AlternativeResult, PersonSkillView, SearchResultRow, SearchSort } from '../../types/intelligence.types';
 import { SENIORITY_LABELS, STATUS_LABELS, yearsText } from './intelligenceModel';
 
 const STATUS_COLOR = { BENCH: 'success', PARTIAL: 'warning', FULL: 'default' } as const;
@@ -265,5 +266,72 @@ export function PersonDrawer({ row, onClose }: { row: SearchResultRow | null; on
         </Box>
       ) : null}
     </Drawer>
+  );
+}
+
+// Suggestions that do NOT meet every criterion. Kept visually apart from exact results and always say what is missing.
+export function AlternativeResults({
+  items,
+  exactCount,
+  exceptionsOnly,
+  onOpen
+}: {
+  items: AlternativeResult[];
+  exactCount: number;
+  // In must-have matching an alternative can only ever be an exception, never a match.
+  exceptionsOnly: boolean;
+  onOpen: (row: SearchResultRow) => void;
+}): JSX.Element | null {
+  if (!items.length) return null;
+  const title = exceptionsOnly
+    ? 'Possible exceptions: not valid matches'
+    : exactCount === 0
+      ? 'No exact matches. These people come close'
+      : `Only ${exactCount} exact ${exactCount === 1 ? 'match' : 'matches'}. You could also consider`;
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mt: 2, borderStyle: 'dashed', borderColor: 'warning.main' }} aria-label="Alternative suggestions">
+      <Stack direction="row" spacing={1} alignItems="center">
+        <LightbulbOutlinedIcon color="warning" />
+        <Typography variant="subtitle1" fontWeight={600}>
+          {title}
+        </Typography>
+        <Chip size="small" color="warning" variant="outlined" label={`${items.length} alternative${items.length === 1 ? '' : 's'}`} />
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
+        {exceptionsOnly
+          ? 'Each of them misses at least one must-have criterion. Use them only as a deliberate exception.'
+          : 'Alternatives, not exact matches: each one misses at least one of your criteria (shown in orange). Change that criterion above to include them in the results.'}
+      </Typography>
+      <Stack divider={<Divider flexItem />} spacing={1.25}>
+        {items.map(({ row, because, differences }) => (
+          <Stack key={row.id} direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'flex-start' }}>
+            <Box sx={{ minWidth: 220, cursor: 'pointer' }} onClick={() => onOpen(row)}>
+              <Typography fontWeight={600} sx={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+                {row.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {row.title} · {row.location}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {STATUS_LABELS[row.allocationStatus]} · {row.availabilityLabel}
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Suggested because:</strong> {because}
+              </Typography>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {differences.map((difference) => (
+                  <Chip key={difference} size="small" color="warning" variant="outlined" label={`✗ ${difference}`} />
+                ))}
+                {(row.matchedSkills.length ? row.matchedSkills : row.topSkills.slice(0, 2)).map((skill) => (
+                  <SkillChip key={skill.skillId} skill={skill} />
+                ))}
+              </Stack>
+            </Box>
+          </Stack>
+        ))}
+      </Stack>
+    </Paper>
   );
 }

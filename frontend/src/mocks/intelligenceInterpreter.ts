@@ -4,7 +4,9 @@
 // The interpreter never computes numbers; the backend (here: intelligenceAnswers.ts) does.
 import type {
   AnswerSpec,
+  DemandStatus,
   QueryIntent,
+  ResultKind,
   SearchFilters,
   SearchSort,
   Seniority,
@@ -48,6 +50,22 @@ export const INTENT_LABELS: Record<QueryIntent, string> = {
   SKILL_DURATION: 'Skill experience duration',
   AVAILABILITY: 'Availability',
   DEMAND_MATCH: 'Match to must-have / optional criteria',
+  DEMAND_SEARCH: 'Find demands',
+  APPLICANT_COUNT: 'External applicants (recruiting)',
+};
+
+// What kind of answer each intent produces, so the user sees whether they get people, a number or demands.
+export const RESULT_KINDS: Record<QueryIntent, ResultKind> = {
+  EMPLOYEE_SEARCH: 'PEOPLE',
+  AVAILABILITY: 'PEOPLE',
+  WORKFORCE_COUNT: 'STATISTIC',
+  WORKFORCE_PERCENTAGE: 'STATISTIC',
+  PROJECT_TENURE: 'STATISTIC',
+  SKILL_DURATION: 'STATISTIC',
+  TECHNOLOGY_COMPARISON: 'COMPARISON',
+  DEMAND_MATCH: 'MATCH',
+  DEMAND_SEARCH: 'DEMANDS',
+  APPLICANT_COUNT: 'APPLICANTS',
 };
 
 // Intents whose numbers are workforce statistics: they count employees only (contractors are listed separately).
@@ -147,7 +165,9 @@ const STOPWORDS = new Set(
     'unallocated allocated allocation bench idle assignment assignments role roles tell let see view display get return show me kind ' +
     'type types level levels breakdown statistics stats figure figures numbers data about across within inside split by per ' +
     'modern application applications app apps building build built builds solution solutions familiar exposure related ' +
-    'similar like stack ecosystem languages language frameworks framework tools tooling development developing'
+    'similar like stack ecosystem languages language frameworks framework tools tooling development developing ' +
+    'demand demands request requests position positions vacancy vacancies requiring needing received receive applied ' +
+    'recruiting applicant applicants external candidate candidates matching match matches suited suitable fit fits particular'
   ).split(/\s+/)
 );
 
@@ -249,7 +269,17 @@ export interface ParsedQuery {
   language: 'EN' | 'SR';
   optionalSkills: SkillCriterion[];
   structured: Record<string, unknown>;
+  resultKind: ResultKind;
+  // Workforce modules the question draws on
+  domains: string[];
 }
+
+export const DOMAINS = {
+  SKILLS: 'Skill Matrix',
+  WORKFORCE: 'Workforce & allocation',
+  DEMANDS: 'Demand Management',
+  RECRUITING: 'Recruiting (external applicants)',
+} as const;
 
 interface SkillHit {
   criterion: SkillCriterion;
@@ -272,7 +302,11 @@ export const parseQuery = (
   text: string,
   today = startOfToday(),
   // Demo permission convention: demand-related interpretation needs the matching right (ScopeInfo.canMatch).
-  { demandAccess = true }: { demandAccess?: boolean } = {}
+  // Applicant access follows ScopeInfo.applicantAccess (NONE / AGGREGATE / LIST).
+  {
+    demandAccess = true,
+    applicantAccess = 'LIST',
+  }: { demandAccess?: boolean; applicantAccess?: 'NONE' | 'AGGREGATE' | 'LIST' } = {}
 ): ParsedQuery => {
   const filters = emptyFilters();
   const notes: string[] = [];
@@ -343,6 +377,13 @@ export const parseQuery = (
       source
     );
   const roleNoun = ROLE_NOUNS.test(source);
+  // Cross-module questions: demands (Module 03) and recruiting.
+  const wantsDemands = /\b(demands?|staffing requests?|open positions?|open roles?|vacanc\w*)\b/.test(source);
+  const wantsPeopleForDemand =
+    /\b(match\w*|fit\w*|suit\w*|candidates? for|people for|employees for|staff for|who (?:can|could) (?:fill|staff|take))\b/.test(source);
+  const wantsApplicants = /\b(applicants?|external candidates?|candidates? from recruiting)\b/.test(source);
+  const applicantQuestion =
+    wantsApplicants && (wantsCount || /\b(this month|received|receive|applied|came in|new)\b/.test(source));
 
   // ---- duration phrases: "same project for more than two years" / "more than 2 years on the same project"
   takeAll(
@@ -424,6 +465,34 @@ export const parseQuery = (
       );
     }
   );
+
+  // ---- demands: a stored demand by code or title ("employees matching DEM-M05"), and demand status words
+  const demandRef: { demand: (typeof INTEL_DEMANDS)[number] | null } = { demand: null };
+  const demandStatuses: DemandStatus[] = [];
+  takeAll(/\bdem-m\d+\b/, (match) => {
+    demandRef.demand = INTEL_DEMANDS.find((item) => normalize(item.code) === match[0]) ?? demandRef.demand;
+  });
+  if (wantsDemands && !demandRef.demand) {
+    [...INTEL_DEMANDS]
+      .sort((a, b) => b.title.length - a.title.length)
+      .some((item) => {
+        const title = normalize(item.title);
+        const index = work.indexOf(` ${title} `);
+        if (index < 0) return false;
+        demandRef.demand = item;
+        blank(index + 1, title.length);
+        return true;
+      });
+  }
+  if (wantsDemands) {
+    takeAll(/\b(?:open|active)\b/, () => {
+      if (!demandStatuses.includes('OPEN')) demandStatuses.push('OPEN', 'IN_SELECTION');
+    });
+    takeAll(/\bin selection\b/, () => {
+      if (!demandStatuses.includes('IN_SELECTION')) demandStatuses.push('IN_SELECTION');
+    });
+    takeAll(/\bon hold\b/, () => demandStatuses.push('ON_HOLD'));
+  }
 
   // ---- roll-off: "available when their current project ends", "projects ending in the next 30 days"
   takeAll(
@@ -607,7 +676,9 @@ export const parseQuery = (
       ordered[index].role = ordered[index + 1].role;
   }
   const hasOptional = ordered.some((hit) => hit.role === 'OPTIONAL');
-  const asksForMatch = !categoryUsed && (hasOptional || (explicitMatch && ordered.some((hit) => hit.role === 'MUST')));
+  // Questions about demands use the skills as "the demand requires …", not as must-have / optional people criteria.
+  const asksForMatch =
+    !wantsDemands && !categoryUsed && (hasOptional || (explicitMatch && ordered.some((hit) => hit.role === 'MUST')));
   // Must-have / optional ranking follows the matching page permission. Without it the search uses the must-have
   // skills as plain filters and ignores the optional ones.
   const isMatch = asksForMatch && demandAccess;
@@ -636,7 +707,9 @@ export const parseQuery = (
     `${skillName(criterion.skillId)} ${criterion.minLevel <= 1 ? '(any level)' : `≥ ${LEVEL_LABELS[criterion.minLevel]}`}${
       criterion.minYears ? `, ${criterion.yearsMode === 'AT_LEAST' ? 'at least' : 'more than'} ${criterion.minYears} years` : ''
     }`;
-  if (!categoryUsed)
+  if (wantsDemands && !demandRef.demand && ordered.length)
+    recognized.push(`Demands that ask for ${ordered.map((hit) => skillName(hit.criterion.skillId)).join(' and ')}`);
+  else if (!categoryUsed && !demandRef.demand)
     ordered.forEach((hit) =>
       recognized.push(
         `${asksForMatch ? (hit.role === 'OPTIONAL' ? (isMatch ? 'Optional: ' : 'Optional (not used): ') : 'Must-have: ') : ''}${skillText(hit.criterion)}`
@@ -763,10 +836,14 @@ export const parseQuery = (
     sort = 'EXPERIENCE';
   });
   takeAll(/\b(?:applicants?|candidates? from recruiting|externals?|external candidates?)\b/, () => {
+    if (applicantQuestion && applicantAccess !== 'NONE') return;
     notes.push(
-      'External applicants are never part of employee search or workforce statistics. See External applicants for recruiting figures.'
+      applicantAccess === 'NONE'
+        ? 'Recruiting figures are not available for your role.'
+        : 'External applicants are never part of employee search or workforce statistics. Ask "How many external applicants did we receive this month?" for the recruiting figure.'
     );
   });
+  if (applicantQuestion) takeAll(/\bthis month\b|\b(?:did we )?receiv\w*\b|\bcame in\b/, () => undefined);
 
   // ---- leftovers: typo-tolerant skills, words from the data, everything else is reported
   const leftovers: string[] = [];
@@ -814,8 +891,17 @@ export const parseQuery = (
   // ---- intent
   const optionalSkills = isMatch ? optionalHits.map((hit) => hit.criterion) : [];
   const compareIds = wantsCompare ? ordered.map((hit) => hit.criterion.skillId) : [];
+  const storedDemand = demandRef.demand;
+  const demandQuestion = wantsDemands || storedDemand !== null;
+  if (demandQuestion && !demandAccess)
+    notes.push('Demands are not visible for your role, so the question was answered as a people search.');
+  if (applicantQuestion && applicantAccess === 'NONE' && !notes.some((note) => note.startsWith('Recruiting figures')))
+    notes.push('Recruiting figures are not available for your role.');
   let intent: QueryIntent;
-  if (wantsCompare && compareIds.length >= 2) intent = 'TECHNOLOGY_COMPARISON';
+  if (applicantQuestion && applicantAccess !== 'NONE') intent = 'APPLICANT_COUNT';
+  else if (demandQuestion && demandAccess && storedDemand && wantsPeopleForDemand) intent = 'DEMAND_MATCH';
+  else if (demandQuestion && demandAccess) intent = 'DEMAND_SEARCH';
+  else if (wantsCompare && compareIds.length >= 2) intent = 'TECHNOLOGY_COMPARISON';
   else if (isMatch) intent = 'DEMAND_MATCH';
   else if (wantsPercentage) intent = 'WORKFORCE_PERCENTAGE';
   else if (wantsCount) intent = 'WORKFORCE_COUNT';
@@ -848,8 +934,37 @@ export const parseQuery = (
   }
   if (intent === 'PROJECT_TENURE' || filters.minCurrentTenureYears !== null) sort = 'TENURE';
 
+  if (intent === 'DEMAND_MATCH' && storedDemand) {
+    // People for a stored demand: the list shows people who meet the skill must-haves; the answer ranks them.
+    filters.skills = storedDemand.mustHave
+      .filter((criterion) => criterion.type === 'SKILL' && criterion.skillId)
+      .map((criterion) => ({
+        skillId: criterion.skillId as string,
+        minLevel: criterion.minLevel ?? 1,
+        minYears: criterion.minYears ?? null,
+        yearsMode: 'MORE_THAN' as const,
+      }));
+    filters.skillMatch = 'ALL';
+    recognized.push(`People for demand ${storedDemand.code} "${storedDemand.title}" (${storedDemand.mustHave.length} must-have, ${storedDemand.optional.length} optional criteria)`);
+    notes.push(
+      'The ranking shows who meets every must-have (including availability on the start date). The people list below shows everyone with the must-have skills, so it can be longer. Open the demand in Demand matching for the full view.'
+    );
+  }
+  if (intent === 'DEMAND_SEARCH') {
+    if (storedDemand) recognized.push(`Demand ${storedDemand.code} "${storedDemand.title}"`);
+    if (demandStatuses.length)
+      recognized.push(`Status: ${demandStatuses.map((status) => status.replace('_', ' ').toLowerCase()).join(' or ')}`);
+    if (!storedDemand && !ordered.length && !demandStatuses.length) recognized.push('All demands you can see');
+    if (wantsPeopleForDemand && !storedDemand)
+      notes.push('Choose one of these demands (or name it, e.g. "employees matching DEM-M05") to see the matching people.');
+  }
+  if (intent === 'APPLICANT_COUNT') {
+    recognized.push('External applicants received this month');
+    notes.push('Recruiting data: counted by application date, shown separately from employees. Only first and last names are ever listed.');
+  }
+
   let demand: StaffingDemand | null = null;
-  if (intent === 'DEMAND_MATCH') {
+  if (intent === 'DEMAND_MATCH' && !storedDemand) {
     const start = filters.availableFrom ?? toIsoDate(today);
     demand = {
       id: 'custom-ai',
@@ -895,7 +1010,38 @@ export const parseQuery = (
           intent,
           ...(intent === 'TECHNOLOGY_COMPARISON' ? { compareSkillIds: compareIds.slice(0, 4) } : {}),
           ...(demand ? { demand } : {}),
+          ...((intent === 'DEMAND_MATCH' || intent === 'DEMAND_SEARCH') && storedDemand ? { demandId: storedDemand.id } : {}),
+          ...(intent === 'DEMAND_SEARCH' && demandStatuses.length ? { demandStatuses } : {}),
         };
+
+  const resultKind = RESULT_KINDS[intent];
+  const domains: string[] = [];
+  if (
+    filters.skills.length ||
+    filters.anySkillMinYears !== null ||
+    compareIds.length ||
+    (storedDemand && intent !== 'DEMAND_SEARCH')
+  )
+    domains.push(DOMAINS.SKILLS);
+  if (
+    resultKind !== 'DEMANDS' &&
+    resultKind !== 'APPLICANTS' &&
+    (resultKind !== 'PEOPLE' ||
+      filters.minCurrentTenureYears !== null ||
+      filters.availableFrom ||
+      filters.minAvailablePct !== null ||
+      filters.allocationStatuses.length ||
+      filters.rollingOffWithinDays !== null ||
+      filters.projectText ||
+      filters.currentProjectId ||
+      filters.verticalId ||
+      filters.businessUnitIds.length ||
+      filters.teamIds.length ||
+      !domains.length)
+  )
+    domains.push(DOMAINS.WORKFORCE);
+  if (resultKind === 'DEMANDS' || resultKind === 'MATCH') domains.push(DOMAINS.DEMANDS);
+  if (resultKind === 'APPLICANTS') domains.push(DOMAINS.RECRUITING);
 
   if (!recognized.length && !filters.text && !notUnderstood.length && intent === 'EMPLOYEE_SEARCH')
     notes.push('Nothing specific was recognised. Showing everyone you can see.');
@@ -912,6 +1058,26 @@ export const parseQuery = (
     roleNoun,
     categoryUsed,
   });
+  if (intent === 'DEMAND_SEARCH') {
+    structured.entity = 'demand';
+    delete structured.mustHave;
+    if (ordered.length) structured.requiresSkills = ordered.map((hit) => skillName(hit.criterion.skillId));
+    if (storedDemand) structured.demand = storedDemand.code;
+    if (demandStatuses.length) structured.status = demandStatuses.map((status) => status.toLowerCase());
+  }
+  if (intent === 'DEMAND_MATCH' && storedDemand) structured.demand = storedDemand.code;
+  if (intent === 'APPLICANT_COUNT') {
+    Object.keys(structured).forEach((key) => delete structured[key]);
+    Object.assign(structured, {
+      intent: 'applicant_count',
+      entity: 'external_applicant',
+      period: 'current_month',
+      dateField: 'application_date',
+      fields: ['first_name', 'last_name'],
+      language: language === 'SR' ? 'sr' : 'en',
+    });
+  }
+  structured.resultType = resultKind.toLowerCase();
 
   return {
     filters,
@@ -931,6 +1097,8 @@ export const parseQuery = (
     language,
     optionalSkills,
     structured,
+    resultKind,
+    domains,
   };
 };
 

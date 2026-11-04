@@ -7,6 +7,8 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
 import SendIcon from '@mui/icons-material/Send';
 import TuneIcon from '@mui/icons-material/Tune';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import {
   Alert,
   Autocomplete,
@@ -23,16 +25,17 @@ import {
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   TextField,
   Typography
 } from '@mui/material';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { WorkforcePageHeader } from '../../components/WorkforcePageHeader';
 import ExportMenu from '../../components/ExportMenu/ExportMenu';
 import AnswerPanel, { AiThinking } from '@features/intelligence/AnswerPanel';
 import CriteriaForm from '@features/intelligence/CriteriaForm';
-import { PersonDrawer, ResultsTable } from '@features/intelligence/SearchResults';
+import { AlternativeResults, PersonDrawer, ResultsTable } from '@features/intelligence/SearchResults';
 import { HistoryDrawer, SaveSearchDialog, SavedSearchesDrawer } from '@features/intelligence/SearchLibrary';
 import {
   fetchSearch,
@@ -63,6 +66,7 @@ import type {
   InterpretResponse,
   IntelligenceCatalog,
   QueryAnswer,
+  ResultKind,
   SavedSearch,
   SearchFilters,
   SearchMode,
@@ -84,6 +88,23 @@ interface Run {
 }
 
 const PROMPT_GROUPS: { label: string; prompts: string[] }[] = [
+  {
+    label: 'People across skills and allocations',
+    prompts: [
+      'Find Java developers with more than three years of experience.',
+      'Show employees with Java and Spring Boot experience who are not currently allocated.',
+      'Find people who worked on e-commerce projects.',
+      'Show employees working in Software Factory.'
+    ]
+  },
+  {
+    label: 'Demands and recruiting',
+    prompts: [
+      'Show open demands requiring Java.',
+      'Find employees matching demand DEM-M05.',
+      'How many external applicants did we receive this month?'
+    ]
+  },
   {
     label: 'Workforce figures',
     prompts: [
@@ -119,7 +140,19 @@ const PROMPT_GROUPS: { label: string; prompts: string[] }[] = [
   }
 ];
 
-const REFINE_EXAMPLES = ['only in Serbia', 'at least 50% free next month', 'senior only', 'with Azure experience'];
+// A few short prompts next to the search box; the full list lives under "More examples & tips".
+const QUICK_PROMPTS = ['Java developers with Kafka and AWS', 'Advanced React developers on bench', 'Show open demands requiring Java.', 'What percentage of our employees are Java developers?'];
+
+const RESULT_LABELS: Record<ResultKind, string> = {
+  PEOPLE: 'people',
+  STATISTIC: 'number with denominator',
+  COMPARISON: 'comparison',
+  MATCH: 'ranked match',
+  DEMANDS: 'demands',
+  APPLICANTS: 'recruiting figure'
+};
+
+const REFINE_EXAMPLES =['only in Serbia', 'at least 50% free next month', 'senior only', 'with Azure experience'];
 
 const ENGINE_LABEL: Record<InterpretResponse['engine'], { label: string; color: 'secondary' | 'success' | 'warning' }> = {
   SIMULATED_AI: { label: 'Simulated AI (demo rule engine, no LLM connected)', color: 'secondary' },
@@ -161,6 +194,8 @@ const answerKpis = (answer: QueryAnswer | undefined): NonNullable<Report['kpis']
       { label: 'Population', value: answer.population.label }
     ];
   if (answer.kind === 'COMPARE') return answer.rows.map((row) => ({ label: row.label, value: `${row.count} (${row.percentage}%)` }));
+  if (answer.kind === 'DEMANDS') return [{ label: 'Demands', value: String(answer.total) }];
+  if (answer.kind === 'APPLICANTS') return [{ label: `Applicants ${answer.monthLabel}`, value: String(answer.total) }];
   return [
     { label: 'Eligible', value: `${answer.eligibleCount} of ${answer.evaluated}` },
     { label: 'Best score', value: answer.top[0] ? String(answer.top[0].score) : '—' }
@@ -170,6 +205,7 @@ const answerKpis = (answer: QueryAnswer | undefined): NonNullable<Report['kpis']
 function SearchDiscoveryPage(): JSX.Element {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const catalogQuery = useIntelligenceCatalog();
   const catalog = catalogQuery.data;
@@ -183,6 +219,9 @@ function SearchDiscoveryPage(): JSX.Element {
   const [interpretation, setInterpretation] = useState<InterpretResponse | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showRefine, setShowRefine] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchResultRow | null>(null);
   const [savedOpen, setSavedOpen] = useState(false);
@@ -197,9 +236,14 @@ function SearchDiscoveryPage(): JSX.Element {
   const recordRun = useRecordRun();
   const saveSearch = useSaveSearch();
   const touchSaved = useTouchSavedSearch();
-  const search = useSearch(run?.filters ?? null, run?.sort ?? 'RELEVANCE', page, size, run?.runId ?? 0);
+  // Alternatives are offered for people searches, not for statistics (they would blur the numbers).
+  const STAT_ONLY = ['WORKFORCE_COUNT', 'WORKFORCE_PERCENTAGE', 'TECHNOLOGY_COMPARISON', 'PROJECT_TENURE', 'SKILL_DURATION', 'DEMAND_SEARCH', 'APPLICANT_COUNT'];
+  const wantsAlternatives = !run?.answerSpec || !STAT_ONLY.includes(run.answerSpec.intent);
+  const search = useSearch(run?.filters ?? null, run?.sort ?? 'RELEVANCE', page, size, run?.runId ?? 0, wantsAlternatives);
   const answerRequest = useMemo(() => (run?.answerSpec ? { ...run.answerSpec, filters: run.filters } : null), [run]);
   const answer = useAnswer(answerRequest);
+  // Demand and recruiting questions answer with demands or a count, not with a list of employees.
+  const peopleListVisible = !run?.answerSpec || !['DEMAND_SEARCH', 'APPLICANT_COUNT'].includes(run.answerSpec.intent);
 
   const start = (next: Omit<Run, 'runId'>): void => {
     runCounter.current += 1;
@@ -208,11 +252,19 @@ function SearchDiscoveryPage(): JSX.Element {
   };
   const labelFor = (filters: SearchFilters): string => (catalog ? summarize(filters, catalog).join(' · ') : '') || 'Everyone in scope';
 
-  // First load: drill-down parameters from dashboards, otherwise browse everyone in scope.
+  // First load: a saved search opened from the Saved searches page, drill-down parameters from dashboards,
+  // otherwise browse everyone in scope.
   useEffect(() => {
     if (!catalog || run) return;
+    const saved = (location.state as { savedSearch?: SavedSearch } | null)?.savedSearch;
     const fromLink = filtersFromParams(params);
-    if (fromLink) {
+    if (saved) {
+      touchSaved.mutate(saved.id);
+      setDraft(saved.filters);
+      setTab(saved.mode);
+      setAiQuery(saved.query ?? '');
+      start({ filters: saved.filters, sort: saved.sort, mode: saved.mode, label: saved.name, query: saved.query, answerSpec: saved.answerSpec ?? null, record: true });
+    } else if (fromLink) {
       setDraft(fromLink);
       setTab('STRUCTURED');
       start({
@@ -258,6 +310,8 @@ function SearchDiscoveryPage(): JSX.Element {
     setInterpretation(null);
     setShowEditor(false);
     setShowJson(false);
+    setShowRefine(false);
+    setShowDetails(false);
     interpret.reset();
     setDraft(createEmptyFilters());
     start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, answerSpec: null, record: false });
@@ -298,7 +352,7 @@ function SearchDiscoveryPage(): JSX.Element {
       notes: [
         `Scope: ${all.scope.label}`,
         'Internal staff only. External applicants are never part of employee search.',
-        ...(answer.data && answer.data.kind !== 'MATCH' ? [`Population: ${answer.data.population.definition}`] : []),
+        ...(answer.data && (answer.data.kind === 'STAT' || answer.data.kind === 'COMPARE') ? [`Population: ${answer.data.population.definition}`] : []),
         'Demo data: figures are illustrative and do not describe the real workforce.',
         ...(all.total > 500 ? ['Only the first 500 rows are exported.'] : [])
       ],
@@ -367,7 +421,7 @@ function SearchDiscoveryPage(): JSX.Element {
     <Box>
       <WorkforcePageHeader
         title="Search & Discovery"
-        description="Ask a question in plain English or Serbian, or search with filters. Find people, count them, compare technologies and match them to demands."
+        description="One search across skills, projects, allocations, availability and demands."
         breadcrumbs={[{ label: 'Search & Discovery' }]}
         actions={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -384,12 +438,11 @@ function SearchDiscoveryPage(): JSX.Element {
         }
       />
       {scope ? (
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-          <Chip size="small" color="primary" variant="outlined" label={`Searching: ${scope.label}`} />
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+          <Tooltip title={`${scope.description} External applicants never appear among employees.`}>
+            <Chip size="small" color="primary" variant="outlined" label={`Searching: ${scope.label}`} />
+          </Tooltip>
           <Chip size="small" color="warning" variant="outlined" label="Demo data · simulated AI" />
-          <Typography variant="body2" color="text.secondary">
-            {scope.description} External applicants are never included.
-          </Typography>
         </Stack>
       ) : null}
 
@@ -409,11 +462,11 @@ function SearchDiscoveryPage(): JSX.Element {
                   void runAi(aiQuery);
                 }}
               >
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
                   <TextField
                     fullWidth
                     multiline
-                    minRows={2}
+                    maxRows={3}
                     value={aiQuery}
                     onChange={(event) => setAiQuery(event.target.value)}
                     placeholder='Ask anything about your workforce, e.g. "What percentage of our employees are Java developers?" or "Koliko ljudi je preko 2 godine na istom projektu?"'
@@ -425,7 +478,7 @@ function SearchDiscoveryPage(): JSX.Element {
                       }
                     }}
                   />
-                  <Stack direction={{ xs: 'row', md: 'column' }} spacing={1} sx={{ minWidth: 150 }}>
+                  <Stack direction="row" spacing={1} sx={{ minWidth: { md: 220 } }}>
                     <Button type="submit" variant="contained" startIcon={<SendIcon />} disabled={!aiQuery.trim() || interpret.isPending}>
                       Ask
                     </Button>
@@ -436,12 +489,32 @@ function SearchDiscoveryPage(): JSX.Element {
                 </Stack>
               </Box>
 
-              {!interpretation && !interpret.isPending ? (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Suggested questions
+              {/* Examples and guidance stay one click away so they never push the results down. */}
+              <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Typography variant="caption" color="text.secondary">
+                  Try:
+                </Typography>
+                {QUICK_PROMPTS.map((prompt) => (
+                  <Chip key={prompt} size="small" variant="outlined" label={prompt} onClick={() => void runAi(prompt)} />
+                ))}
+                <Button size="small" startIcon={<HelpOutlineIcon />} onClick={() => setShowHelp(!showHelp)} aria-expanded={showHelp}>
+                  {showHelp ? 'Hide examples & tips' : 'More examples & tips'}
+                </Button>
+              </Stack>
+              <Collapse in={showHelp}>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
+                  <Typography variant="body2" sx={{ mb: 1.5 }}>
+                    One search across <strong>Skill Matrix</strong> (skills, levels, years), <strong>Workforce</strong> (projects, allocations, availability, units)
+                    {scope?.canMatch ? (
+                      <>
+                        {' '}
+                        and <strong>Demand Management</strong> (demands, matching)
+                      </>
+                    ) : null}
+                    . Ask for people, a number (&ldquo;how many&rdquo;, &ldquo;what percentage&rdquo;), a comparison, demands or a match. Name skills, years (&ldquo;more than 3
+                    years&rdquo;), availability (&ldquo;next month&rdquo;, &ldquo;50% free&rdquo;) and must-have / optional criteria. English and Serbian both work.
                   </Typography>
-                  <Grid container spacing={1.5} sx={{ mt: 0.25 }}>
+                  <Grid container spacing={1.5}>
                     {PROMPT_GROUPS.map((group) => (
                       <Grid item xs={12} sm={6} lg={4} key={group.label}>
                         <Typography variant="subtitle2" gutterBottom>
@@ -463,8 +536,8 @@ function SearchDiscoveryPage(): JSX.Element {
                       </Grid>
                     ))}
                   </Grid>
-                </Box>
-              ) : null}
+                </Paper>
+              </Collapse>
 
               <AiThinking active={interpret.isPending} />
               {interpret.isError ? (
@@ -474,79 +547,97 @@ function SearchDiscoveryPage(): JSX.Element {
               ) : null}
 
               {interpretation && !interpret.isPending ? (
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      What I understood
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  {/* Compact summary: what was understood, in one line. Details, notes and JSON on demand. */}
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2" fontWeight={600}>
+                      Understood:
                     </Typography>
-                    <Chip size="small" color="primary" label={`Intent: ${interpretation.intentLabel}`} />
-                    {interpretation.language === 'SR' ? <Chip size="small" variant="outlined" label="Serbian question" /> : null}
-                    <Chip size="small" color={ENGINE_LABEL[interpretation.engine].color} variant="outlined" label={ENGINE_LABEL[interpretation.engine].label} />
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={
-                        interpretation.usage.inputTokens
-                          ? `~${interpretation.usage.inputTokens} in / ${interpretation.usage.outputTokens} out tokens · est. $${interpretation.usage.estimatedCostUsd.toFixed(5)}`
-                          : 'No AI tokens used · $0'
-                      }
-                    />
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    “{interpretation.query}”
-                  </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ my: 1.5 }}>
                     {interpretation.recognized.map((item) => (
                       <Chip
                         key={item}
+                        size="small"
                         color={item.startsWith('Optional:') ? 'success' : item.startsWith('Must-have:') ? 'error' : 'primary'}
                         variant={item.startsWith('Optional:') || item.startsWith('Must-have:') ? 'outlined' : 'filled'}
                         label={item}
                       />
                     ))}
                     {interpretation.notUnderstood.map((word) => (
-                      <Chip key={word} color="warning" variant="outlined" label={`Not understood: ${word}`} />
+                      <Chip key={word} size="small" color="warning" variant="outlined" label={`Not understood: ${word}`} />
                     ))}
-                  </Stack>
-                  {interpretation.notes.map((note) => (
-                    <Typography key={note} variant="body2">
-                      • {note}
-                    </Typography>
-                  ))}
-
-                  <Box
-                    component="form"
-                    sx={{ mt: 2 }}
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void runAi(refineText, interpretation.query);
-                    }}
-                  >
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        label="Refine this question"
-                        placeholder={`e.g. ${REFINE_EXAMPLES.join(' · ')}`}
-                        value={refineText}
-                        onChange={(event) => setRefineText(event.target.value)}
-                        inputProps={{ maxLength: 200 }}
-                      />
-                      <Button type="submit" variant="outlined" disabled={!refineText.trim()}>
-                        Refine
-                      </Button>
-                    </Stack>
-                  </Box>
-
-                  <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" variant="outlined" label={`Result: ${RESULT_LABELS[interpretation.resultKind]}`} />
+                    <Box sx={{ flexGrow: 1 }} />
                     <Button size="small" startIcon={<TuneIcon />} onClick={() => setShowEditor(!showEditor)} aria-expanded={showEditor}>
-                      {showEditor ? 'Hide criteria' : 'Edit criteria'}
+                      Edit criteria
                     </Button>
-                    <Button size="small" startIcon={<DataObjectIcon />} onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
-                      {showJson ? 'Hide structured query' : 'Show structured query (JSON)'}
+                    <Button size="small" onClick={() => setShowRefine(!showRefine)} aria-expanded={showRefine}>
+                      Refine
+                    </Button>
+                    <Button size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setShowDetails(!showDetails)} aria-expanded={showDetails}>
+                      Details{interpretation.notes.length ? ` (${interpretation.notes.length})` : ''}
                     </Button>
                   </Stack>
-                  <Collapse in={showJson}>
+                  {interpretation.notes.some((note) => /not available for your role|not visible for your role|only available to roles/.test(note)) ? (
+                    <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
+                      {interpretation.notes.find((note) => /not available for your role|not visible for your role|only available to roles/.test(note))}
+                    </Typography>
+                  ) : null}
+                  <Collapse in={showRefine}>
+                    <Box
+                      component="form"
+                      sx={{ mt: 1.5 }}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void runAi(refineText, interpretation.query);
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          label="Refine this question"
+                          placeholder={`e.g. ${REFINE_EXAMPLES.join(' · ')}`}
+                          value={refineText}
+                          onChange={(event) => setRefineText(event.target.value)}
+                          inputProps={{ maxLength: 200 }}
+                        />
+                        <Button type="submit" variant="outlined" disabled={!refineText.trim()}>
+                          Refine
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Collapse>
+                  <Collapse in={showDetails}>
+                    <Box sx={{ mt: 1.5 }}>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                        <Chip size="small" color="primary" label={`Intent: ${interpretation.intentLabel}`} />
+                        {interpretation.domains.length ? <Chip size="small" variant="outlined" label={`Uses: ${interpretation.domains.join(' + ')}`} /> : null}
+                        {interpretation.language === 'SR' ? <Chip size="small" variant="outlined" label="Serbian question" /> : null}
+                        <Chip size="small" color={ENGINE_LABEL[interpretation.engine].color} variant="outlined" label={ENGINE_LABEL[interpretation.engine].label} />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={
+                            interpretation.usage.inputTokens
+                              ? `~${interpretation.usage.inputTokens} in / ${interpretation.usage.outputTokens} out tokens · est. $${interpretation.usage.estimatedCostUsd.toFixed(5)}`
+                              : 'No AI tokens used · $0'
+                          }
+                        />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        “{interpretation.query}”
+                      </Typography>
+                      {interpretation.notes.map((note) => (
+                        <Typography key={note} variant="body2">
+                          • {note}
+                        </Typography>
+                      ))}
+                      <Button size="small" sx={{ mt: 1 }} startIcon={<DataObjectIcon />} onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
+                        {showJson ? 'Hide structured query' : 'Show structured query (JSON)'}
+                      </Button>
+                    </Box>
+                  </Collapse>
+                  <Collapse in={showJson && showDetails}>
                     <Box
                       component="pre"
                       sx={{ mt: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, fontSize: 13, overflowX: 'auto', maxWidth: '100%' }}
@@ -677,6 +768,17 @@ function SearchDiscoveryPage(): JSX.Element {
       {run?.answerSpec ? (
         <Box sx={{ mb: 2 }}>
           <AnswerPanel answer={answer.data} loading={answer.isFetching} error={answer.isError} onShowPeople={showPeople} />
+          {!peopleListVisible ? (
+            <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<BookmarkBorderIcon />}
+                onClick={() => setSaveSource({ filters: run.filters, sort: run.sort, mode: run.mode, label: run.label, query: run.query, answerSpec: run.answerSpec })}
+              >
+                Save search
+              </Button>
+            </Stack>
+          ) : null}
         </Box>
       ) : null}
 
@@ -686,13 +788,20 @@ function SearchDiscoveryPage(): JSX.Element {
         </Alert>
       ))}
 
-      {run ? (
+      {run && peopleListVisible ? (
         <Box ref={resultsRef}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1} sx={{ mb: 1 }}>
             <Box>
-              <Typography variant="subtitle1" fontWeight={600}>
-                {data ? `${data.total} ${data.total === 1 ? 'person' : 'people'}` : 'Searching…'}
+              <Typography variant="h6" component="h2" fontWeight={600}>
+                {data
+                  ? data.total === 0
+                    ? 'No exact matches'
+                    : `${data.total} ${data.total === 1 ? 'person matches' : 'people match'}${data.alternatives.length ? ' exactly' : ''}`
+                  : 'Searching…'}
                 <Chip size="small" sx={{ ml: 1 }} label={MODE_LABELS[run.mode]} color={run.mode === 'AI' ? 'secondary' : 'default'} />
+                {data?.alternatives.length ? (
+                  <Chip size="small" sx={{ ml: 1 }} color="warning" variant="outlined" label={`+ ${data.alternatives.length} alternatives below`} />
+                ) : null}
               </Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                 {(data?.criteria.length ? data.criteria : ['No filters: everyone in your scope']).map((item) => (
@@ -725,25 +834,35 @@ function SearchDiscoveryPage(): JSX.Element {
               <ExportMenu getReport={buildReport} disabled={!data} />
             </Stack>
           </Stack>
-          {run.mode === 'AI' && data && data.total === 0 ? (
+          {data && data.total === 0 ? (
             <Alert severity="info" sx={{ mb: 1 }}>
-              Nobody matches all of the understood criteria. Open “Edit criteria” above to relax one, or refine the question.
+              Nobody meets all of these criteria.{' '}
+              {data.alternatives.length ? 'The closest alternatives are listed below; each shows what it does not meet. ' : ''}
+              Remove or relax a criterion{run.mode === 'AI' ? ' with “Edit criteria”, or refine the question' : ''} to widen the search.
             </Alert>
           ) : null}
-          <ResultsTable
-            rows={data?.rows ?? []}
-            total={data?.total ?? 0}
-            page={page}
-            size={size}
-            sort={run.sort}
-            loading={search.isFetching}
-            showRelevance={showRelevance}
-            onSort={(sort) => setRun({ ...run, sort, record: false })}
-            onPage={setPage}
-            onSize={(value) => {
-              setSize(value);
-              setPage(0);
-            }}
+          {data && data.total === 0 && data.alternatives.length ? null : (
+            <ResultsTable
+              rows={data?.rows ?? []}
+              total={data?.total ?? 0}
+              page={page}
+              size={size}
+              sort={run.sort}
+              loading={search.isFetching}
+              showRelevance={showRelevance}
+              onSort={(sort) => setRun({ ...run, sort, record: false })}
+              onPage={setPage}
+              onSize={(value) => {
+                setSize(value);
+                setPage(0);
+              }}
+              onOpen={setSelected}
+            />
+          )}
+          <AlternativeResults
+            items={data?.alternatives ?? []}
+            exactCount={data?.total ?? 0}
+            exceptionsOnly={run.answerSpec?.intent === 'DEMAND_MATCH'}
             onOpen={setSelected}
           />
         </Box>

@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { CompareAnswer, MatchAnswer, QueryAnswer, StatAnswer } from '../../types/intelligence.types';
+import type { ApplicantsAnswer, CompareAnswer, DemandsAnswer, MatchAnswer, QueryAnswer, StatAnswer } from '../../types/intelligence.types';
 
 const STEPS = ['Reading the question', 'Extracting criteria', 'Validating against the catalogue', 'Querying workforce data'];
 
@@ -293,6 +293,117 @@ function MatchView({ answer }: { answer: MatchAnswer }): JSX.Element {
   );
 }
 
+const DEMAND_STATUS: Record<DemandsAnswer['rows'][number]['status'], { label: string; color: 'success' | 'info' | 'default' }> = {
+  OPEN: { label: 'Open', color: 'success' },
+  IN_SELECTION: { label: 'In selection', color: 'info' },
+  ON_HOLD: { label: 'On hold', color: 'default' }
+};
+
+// Demand results (Module 03 data): why each demand matches the question and how many people could fill it.
+function DemandsView({ answer }: { answer: DemandsAnswer }): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <Box>
+      <Typography variant="overline" color="text.secondary">
+        Demands · from Demand Management
+      </Typography>
+      <Typography variant="h5" fontWeight={700} gutterBottom>
+        {answer.total} {answer.total === 1 ? 'demand' : 'demands'}
+      </Typography>
+      {answer.rows.length ? (
+        <Box sx={{ overflowX: 'auto' }}>
+          <Table size="small" aria-label="Demand results">
+            <TableHead>
+              <TableRow>
+                <TableCell>Demand</TableCell>
+                <TableCell>Status · start</TableCell>
+                <TableCell>Criteria</TableCell>
+                <TableCell align="right">Eligible people</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {answer.rows.map((row) => (
+                <TableRow key={row.demandId}>
+                  <TableCell sx={{ minWidth: 200 }}>
+                    <Typography variant="body2" fontWeight={600}>
+                      {row.code} · {row.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {row.client} · {row.role}
+                    </Typography>
+                    {row.matched.length ? (
+                      <Typography variant="caption" display="block" color="success.main">
+                        Matches: {row.matched.join(', ')}
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="small" color={DEMAND_STATUS[row.status].color} label={DEMAND_STATUS[row.status].label} />
+                    <Typography variant="caption" display="block" color="text.secondary">
+                      Start {row.startDate}
+                    </Typography>
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 220 }}>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                      {row.mustHave.map((label) => (
+                        <Chip key={`m-${label}`} size="small" color="error" variant="outlined" label={`Must: ${label}`} />
+                      ))}
+                      {row.optional.map((label) => (
+                        <Chip key={`o-${label}`} size="small" variant="outlined" label={`Optional: ${label}`} />
+                      ))}
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right">
+                    {row.eligibleCount} of {row.evaluated}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="small" endIcon={<OpenInNewIcon />} onClick={() => navigate(`/intelligence/matching?demand=${row.demandId}`)}>
+                      Match people
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      ) : (
+        <Alert severity="info">No demand asks for these criteria. Try fewer skills or another status.</Alert>
+      )}
+      {answer.notes.map((note) => (
+        <Typography key={note} variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+          {note}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
+function ApplicantsView({ answer }: { answer: ApplicantsAnswer }): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <Box>
+      <Typography variant="overline" color="text.secondary">
+        Recruiting · external applicants
+      </Typography>
+      <Typography variant="h3" fontWeight={700} color="primary" lineHeight={1.1}>
+        {answer.total}
+      </Typography>
+      <Typography variant="body1">applications received in {answer.monthLabel}</Typography>
+      {answer.canOpenList ? (
+        <Button size="small" variant="outlined" sx={{ mt: 1.5 }} endIcon={<OpenInNewIcon />} onClick={() => navigate('/intelligence/applicants')}>
+          Open External applicants (names only)
+        </Button>
+      ) : null}
+      {answer.notes.map((note) => (
+        <Typography key={note} variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+          {note}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
 function AnswerPanel({ answer, loading, error, onShowPeople }: { answer: QueryAnswer | undefined; loading: boolean; error: boolean; onShowPeople: () => void }): JSX.Element | null {
   if (error) return <Alert severity="warning">The statistic could not be calculated for these criteria. The matching people are listed below.</Alert>;
   if (loading && !answer) return <LinearProgress />;
@@ -302,6 +413,8 @@ function AnswerPanel({ answer, loading, error, onShowPeople }: { answer: QueryAn
       {answer.kind === 'STAT' ? <StatView answer={answer} onShowPeople={onShowPeople} /> : null}
       {answer.kind === 'COMPARE' ? <CompareView answer={answer} onShowPeople={onShowPeople} /> : null}
       {answer.kind === 'MATCH' ? <MatchView answer={answer} /> : null}
+      {answer.kind === 'DEMANDS' ? <DemandsView answer={answer} /> : null}
+      {answer.kind === 'APPLICANTS' ? <ApplicantsView answer={answer} /> : null}
     </Paper>
   );
 }

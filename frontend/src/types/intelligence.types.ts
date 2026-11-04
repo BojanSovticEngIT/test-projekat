@@ -156,6 +156,17 @@ export interface SearchResponse {
   criteria: string[];
   warnings: string[];
   scope: ScopeInfo;
+  // Suggestions when there are fewer than ALTERNATIVES_BELOW exact matches. Never part of `rows` or `total`.
+  alternatives: AlternativeResult[];
+}
+
+// A person who does NOT meet every original criterion, suggested because exactly one criterion was relaxed.
+export interface AlternativeResult {
+  row: SearchResultRow;
+  // Why this person is suggested, e.g. "One skill level below the requested Java ≥ 4"
+  because: string;
+  // Original criteria this person does not meet, with actual vs requested values
+  differences: string[];
 }
 
 export type InterpretationEngine =
@@ -171,14 +182,24 @@ export type QueryIntent =
   | 'PROJECT_TENURE'
   | 'SKILL_DURATION'
   | 'AVAILABILITY'
-  | 'DEMAND_MATCH';
+  | 'DEMAND_MATCH'
+  | 'DEMAND_SEARCH'
+  | 'APPLICANT_COUNT';
 
 // What the backend must compute on top of the people list. Saved with a search so it can be re-run.
 export interface AnswerSpec {
   intent: QueryIntent;
   compareSkillIds?: string[];
+  // Ad-hoc criteria (from a must-have / optional question)
   demand?: StaffingDemand | null;
+  // A stored demand (e.g. "employees matching DEM-M05")
+  demandId?: string | null;
+  // Demand search: status filter
+  demandStatuses?: DemandStatus[];
 }
+
+// The result type a question produces; shown to the user so it is clear what kind of answer they get.
+export type ResultKind = 'PEOPLE' | 'STATISTIC' | 'COMPARISON' | 'MATCH' | 'DEMANDS' | 'APPLICANTS';
 
 export interface AnswerRequest extends AnswerSpec {
   filters: SearchFilters;
@@ -254,11 +275,50 @@ export interface MatchAnswer {
   notes: string[];
 }
 
-export type QueryAnswer = StatAnswer | CompareAnswer | MatchAnswer;
+export interface DemandResultRow {
+  demandId: string;
+  code: string;
+  title: string;
+  client: string;
+  role: string;
+  status: DemandStatus;
+  startDate: string;
+  mustHave: string[];
+  optional: string[];
+  // Why the demand matches the question, e.g. "Java (must-have)"
+  matched: string[];
+  // Internal people in the user's scope who meet every must-have (from demand matching)
+  eligibleCount: number;
+  evaluated: number;
+}
+
+export interface DemandsAnswer {
+  kind: 'DEMANDS';
+  intent: QueryIntent;
+  total: number;
+  rows: DemandResultRow[];
+  notes: string[];
+}
+
+export interface ApplicantsAnswer {
+  kind: 'APPLICANTS';
+  intent: QueryIntent;
+  month: string;
+  monthLabel: string;
+  total: number;
+  // LIST access may open the applicants page (names only); AGGREGATE sees the number only
+  canOpenList: boolean;
+  notes: string[];
+}
+
+export type QueryAnswer = StatAnswer | CompareAnswer | MatchAnswer | DemandsAnswer | ApplicantsAnswer;
 
 export interface InterpretResponse {
   intent: QueryIntent;
   intentLabel: string;
+  resultKind: ResultKind;
+  // Data areas the question touched: Skill Matrix, Workforce allocation, Demand Management, Recruiting
+  domains: string[];
   // The structured instruction an LLM would return; shown to users so they can see what was understood.
   structured: Record<string, unknown>;
   answerSpec: AnswerSpec | null;

@@ -32,6 +32,7 @@ import {
 } from './intelligenceSearch';
 import { INTENT_LABELS, parseQuery } from './intelligenceInterpreter';
 import { answerQuery } from './intelligenceAnswers';
+import { ALTERNATIVES_BELOW, suggestAlternatives } from './intelligenceAlternatives';
 import { sanitizeAnswerSpec } from './intelligenceStore';
 import {
   applicantTrend,
@@ -163,15 +164,21 @@ export const intelligenceHandlers = [
     const access = authorize(request, (scope) => scope.canSearchPeople);
     if (access.denied) return access.denied;
     const input = await body(request);
-    return HttpResponse.json(
-      searchPeople(
+    const result = searchPeople(
+      access.rule,
+      input.filters,
+      input.sort,
+      Number(input.page) || 0,
+      Number(input.size) || 20
+    );
+    // Alternatives are suggested separately when an exact search finds too few people (never mixed into rows).
+    if (input.withAlternatives === true && result.page === 0 && result.total < ALTERNATIVES_BELOW)
+      result.alternatives = suggestAlternatives(
         access.rule,
         input.filters,
-        input.sort,
-        Number(input.page) || 0,
-        Number(input.size) || 20
-      )
-    );
+        new Set(result.rows.map((row) => row.id))
+      );
+    return HttpResponse.json(result);
   }),
 
   http.post(`${BASE}/interpret`, async ({ request }) => {
@@ -187,6 +194,7 @@ export const intelligenceHandlers = [
     const fullQuery = context ? `${context} ${query}` : query;
     const parsed = parseQuery(fullQuery, undefined, {
       demandAccess: access.rule.scope.canMatch,
+      applicantAccess: access.rule.scope.applicantAccess,
     });
     // Simulated model latency so the demo shows the "interpreting" state; the rules themselves are instant.
     if (!parsed.simple) await delay(650);
@@ -231,6 +239,8 @@ export const intelligenceHandlers = [
     const response: InterpretResponse = {
       intent: parsed.intent,
       intentLabel: INTENT_LABELS[parsed.intent],
+      resultKind: parsed.resultKind,
+      domains: parsed.domains,
       structured: parsed.structured,
       answerSpec: parsed.answerSpec,
       notUnderstood: parsed.notUnderstood,
@@ -253,8 +263,15 @@ export const intelligenceHandlers = [
     const access = authorize(request, (scope) => scope.canSearchPeople);
     if (access.denied) return access.denied;
     const input = await body(request);
-    // Same feature rule as POST /matching: must-have / optional matching needs the matching right.
-    if (input.intent === 'DEMAND_MATCH' && !access.rule.scope.canMatch)
+    // Same feature rules as the dedicated pages: demand matching and demand search need the matching right
+    // (as GET /demands and POST /matching); recruiting figures need applicant access (as GET /applicants/trend).
+    const allowed =
+      input.intent === 'DEMAND_MATCH' || input.intent === 'DEMAND_SEARCH'
+        ? access.rule.scope.canMatch
+        : input.intent === 'APPLICANT_COUNT'
+          ? access.rule.scope.applicantAccess !== 'NONE'
+          : true;
+    if (!allowed)
       return HttpResponse.json(
         { message: 'You do not have permission to do this.' },
         { status: 403 }

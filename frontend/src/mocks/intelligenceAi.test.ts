@@ -1,6 +1,6 @@
 // Search & Discovery demo: AI query interpretation, workforce statistics, matching and privacy rules.
 import { UserRole } from '../types/enums';
-import type { CompareAnswer, MatchAnswer, QueryIntent, StatAnswer } from '../types/intelligence.types';
+import type { ApplicantsAnswer, CompareAnswer, DemandsAnswer, MatchAnswer, QueryIntent, StatAnswer } from '../types/intelligence.types';
 import { allProfiles, scopeFor, startOfToday } from './intelligenceCore';
 import { searchPeople } from './intelligenceSearch';
 import { parseQuery } from './intelligenceInterpreter';
@@ -9,6 +9,7 @@ import { DEFAULT_WEIGHTS, evaluateDemand, materializeDemand } from './intelligen
 import { applicantsForMonth, dashboard, skillAnalytics, tenureAnalytics } from './intelligenceAnalytics';
 import { INTEL_APPLICANTS, INTEL_DEMANDS, INTEL_EMPLOYEES } from './intelligenceFixtures';
 import { createSaved, deleteSaved, listSaved, updateSaved } from './intelligenceStore';
+import { suggestAlternatives } from './intelligenceAlternatives';
 
 const TODAY = startOfToday(new Date(2026, 10, 4));
 const admin = scopeFor(UserRole.ADMIN)!;
@@ -375,5 +376,121 @@ describe('workshop corrections', () => {
     expect(management.projects.every((row) => row.currentMembers >= 5)).toBe(true);
     expect(management.criteria.join(' ')).toMatch(/fewer than 5 people/);
     expect(tenureAnalytics(admin, { thresholdYears: 2 }, TODAY).projects.some((row) => row.currentMembers < 5)).toBe(true);
+  });
+});
+
+describe('workforce-wide search across modules (demo)', () => {
+  const pmo = scopeFor(UserRole.PMO)!;
+  const askAs = (role: UserRole, query: string) => {
+    const rule = scopeFor(role)!;
+    const parsed = parseQuery(query, TODAY, { demandAccess: rule.scope.canMatch, applicantAccess: rule.scope.applicantAccess });
+    const list = searchPeople(rule, parsed.filters, parsed.sort, 0, 500, TODAY);
+    const answer = parsed.answerSpec ? answerQuery(rule, { ...parsed.answerSpec, filters: parsed.filters }, TODAY) : null;
+    return { parsed, list, answer };
+  };
+
+  it.each([
+    ['Find Java developers with more than three years of experience.', 'PEOPLE'],
+    ['Find available Vue developers.', 'PEOPLE'],
+    ['Show employees with Java and Spring Boot experience who are not currently allocated.', 'PEOPLE'],
+    ['Find people who worked on e-commerce projects.', 'PEOPLE'],
+    ['Show employees working in Software Factory.', 'PEOPLE'],
+    ['Show open demands requiring Java.', 'DEMANDS'],
+    ['Find employees matching demand DEM-M05.', 'MATCH'],
+    ['How many external applicants did we receive this month?', 'APPLICANTS']
+  ])('"%s" → %s result, fully understood', (query, kind) => {
+    const { parsed, list, answer } = askAs(UserRole.PMO, query);
+    expect(parsed.resultKind).toBe(kind);
+    expect(parsed.notUnderstood).toEqual([]);
+    expect(parsed.filters.text).toBe('');
+    if (kind === 'PEOPLE') expect(list.total).toBeGreaterThan(0);
+    else expect(answer).not.toBeNull();
+  });
+
+  it('finds demands by required skill and status, with eligible people per demand', () => {
+    const { answer, parsed } = askAs(UserRole.PMO, 'Show open demands requiring Java.');
+    expect(parsed.domains).toContain('Demand Management');
+    const demands = answer as DemandsAnswer;
+    expect(demands.rows.length).toBeGreaterThan(0);
+    demands.rows.forEach((row) => {
+      expect(['OPEN', 'IN_SELECTION']).toContain(row.status);
+      expect(row.matched.join(' ')).toMatch(/Java/);
+      expect(row.eligibleCount).toBeLessThanOrEqual(row.evaluated);
+    });
+  });
+
+  it('matches people to a named stored demand with the same result as the matching page', () => {
+    const { answer } = askAs(UserRole.PMO, 'Find employees matching demand DEM-M05.');
+    const match = answer as MatchAnswer;
+    const page = evaluateDemand(pmo, materializeDemand(INTEL_DEMANDS.find((item) => item.code === 'DEM-M05')!, TODAY), DEFAULT_WEIGHTS, TODAY);
+    expect(match.demand.code).toBe('DEM-M05');
+    expect(match.eligibleCount).toBe(page.eligibleCount);
+    expect(match.top.map((item) => item.score)).toEqual(page.eligible.slice(0, 5).map((item) => item.score));
+  });
+
+  it('gives PMO the same access on every entry point', () => {
+    expect(pmo.scope.canSearchPeople && pmo.scope.canMatch && pmo.scope.applicantAccess === 'LIST').toBe(true);
+    const applicants = askAs(UserRole.PMO, 'How many external applicants did we receive this month?').answer as ApplicantsAnswer;
+    expect(applicants.total).toBe(applicantsForMonth(pmo, null, TODAY).total);
+    expect(applicants.canOpenList).toBe(true);
+  });
+
+  it('keeps demands and recruiting closed for roles without access, consistently', () => {
+    const hrDemands = askAs(UserRole.HR, 'Show open demands requiring Java.');
+    expect(hrDemands.parsed.resultKind).not.toBe('DEMANDS');
+    expect(answerQuery(scopeFor(UserRole.HR)!, { intent: 'DEMAND_SEARCH', filters: {} }, TODAY)).toBeNull();
+    const hrApplicants = askAs(UserRole.HR, 'How many external applicants did we receive this month?');
+    expect(hrApplicants.parsed.resultKind).not.toBe('APPLICANTS');
+    expect(hrApplicants.parsed.notes.join(' ')).toMatch(/not available for your role/);
+    expect(answerQuery(scopeFor(UserRole.LINE_MANAGER)!, { intent: 'APPLICANT_COUNT', filters: {} }, TODAY)).toBeNull();
+  });
+});
+
+describe('alternative suggestions', () => {
+  const pmo = scopeFor(UserRole.PMO)!;
+  const exactAndAlternatives = (rule: typeof pmo, query: string) => {
+    const parsed = parseQuery(query, TODAY, { demandAccess: rule.scope.canMatch, applicantAccess: rule.scope.applicantAccess });
+    const exact = searchPeople(rule, parsed.filters, parsed.sort, 0, 500, TODAY);
+    return { parsed, exact, alternatives: suggestAlternatives(rule, parsed.filters, new Set(exact.rows.map((row) => row.id)), TODAY) };
+  };
+
+  it('suggests close alternatives when nobody matches, separate from exact results', () => {
+    const { exact, alternatives } = exactAndAlternatives(pmo, 'Java developers with Kafka and AWS');
+    expect(exact.total).toBe(0);
+    expect(exact.alternatives).toEqual([]);
+    expect(alternatives.length).toBeGreaterThan(0);
+    alternatives.forEach((item) => {
+      expect(item.because.length).toBeGreaterThan(0);
+      expect(item.differences.length).toBeGreaterThan(0);
+    });
+    expect(alternatives[0].differences.join(' ')).toMatch(/No AWS|AWS level/);
+  });
+
+  it('never repeats an exact match and always names the unmet criteria', () => {
+    const { exact, alternatives } = exactAndAlternatives(pmo, 'Advanced React developers on bench');
+    const exactIds = new Set(exact.rows.map((row) => row.id));
+    expect(alternatives.length).toBeGreaterThan(0);
+    alternatives.forEach((item) => {
+      expect(exactIds.has(item.row.id)).toBe(false);
+      expect(item.differences.length).toBeGreaterThan(0);
+    });
+    // Partly allocated people are shown with their real allocation, never as "on bench".
+    const partial = alternatives.find((item) => item.row.allocationStatus !== 'BENCH');
+    if (partial) expect(partial.differences.join(' ')).toMatch(/allocated \(asked on bench\)/);
+  });
+
+  it('relaxes seniority only for roles that may see seniority', () => {
+    const filters = { skills: [{ skillId: 'java', minLevel: 3, minYears: null }], seniority: ['LEAD'] };
+    const exactAdmin = searchPeople(admin, filters, 'NAME', 0, 500, TODAY);
+    const adminAlternatives = suggestAlternatives(admin, filters, new Set(exactAdmin.rows.map((row) => row.id)), TODAY);
+    adminAlternatives
+      .filter((item) => item.because.startsWith('One seniority level below'))
+      .forEach((item) => expect(item.differences.join(' ')).toMatch(/Seniority senior \(asked lead\)/));
+    const pmoAlternatives = suggestAlternatives(pmo, filters, new Set(), TODAY);
+    expect(pmoAlternatives.some((item) => item.because.startsWith('One seniority level below'))).toBe(false);
+  });
+
+  it('does not suggest anything for name searches', () => {
+    expect(suggestAlternatives(pmo, { text: 'nobody-with-this-name' }, new Set(), TODAY)).toEqual([]);
   });
 });

@@ -2,6 +2,9 @@
 // Everything here is deterministic code over the (demo) data. The AI interpreter only decides WHAT to compute.
 import type {
   CompareAnswer,
+  DemandCriterion,
+  DemandResultRow,
+  DemandStatus,
   PopulationInfo,
   QueryAnswer,
   QueryIntent,
@@ -10,7 +13,8 @@ import type {
   StatAnswer,
   StatLens,
 } from '../types/intelligence.types';
-import { INTEL_APPLICANTS, INTEL_EMPLOYEES, INTEL_SKILLS } from './intelligenceFixtures';
+import { INTEL_APPLICANTS, INTEL_DEMANDS, INTEL_EMPLOYEES, INTEL_SKILLS } from './intelligenceFixtures';
+import { applicantsForMonth } from './intelligenceAnalytics';
 import {
   inScope,
   skillName,
@@ -23,7 +27,7 @@ import {
   type ScopeRule,
 } from './intelligenceCore';
 import { emptyFilters, sanitizeFilters, searchPeople } from './intelligenceSearch';
-import { DEFAULT_WEIGHTS, evaluateDemand, sanitizeDemand } from './intelligenceMatching';
+import { DEFAULT_WEIGHTS, criterionLabel, evaluateDemand, materializeDemand, sanitizeDemand } from './intelligenceMatching';
 import { subjectFor } from './intelligenceInterpreter';
 
 const INTENTS: QueryIntent[] = [
@@ -35,6 +39,8 @@ const INTENTS: QueryIntent[] = [
   'SKILL_DURATION',
   'AVAILABILITY',
   'DEMAND_MATCH',
+  'DEMAND_SEARCH',
+  'APPLICANT_COUNT',
 ];
 
 const pct = (count: number, size: number): number =>
@@ -172,9 +178,79 @@ export const answerQuery = (
   const filters = sanitizeFilters(raw.filters);
   const asOf = toIsoDate(today);
 
+  // Recruiting figure: same rule as the External applicants page (aggregate or list access).
+  if (intent === 'APPLICANT_COUNT') {
+    if (rule.scope.applicantAccess === 'NONE') return null;
+    const month = applicantsForMonth(rule, null, today);
+    return {
+      kind: 'APPLICANTS',
+      intent,
+      month: month.month,
+      monthLabel: month.monthLabel,
+      total: month.total,
+      canOpenList: rule.scope.applicantAccess === 'LIST',
+      notes: [
+        'Counted by application date in the current calendar month. Demo data: the real source has no application date yet.',
+        'External applicants are never part of employee search or workforce figures.',
+      ],
+    };
+  }
+
+  // Demand discovery (Module 03 data). Demand access follows the matching right, as on the matching page.
+  if (intent === 'DEMAND_SEARCH') {
+    if (!rule.scope.canMatch) return null;
+    const statuses = Array.isArray(raw.demandStatuses) ? (raw.demandStatuses as DemandStatus[]) : [];
+    const requested = filters.skills.map((item) => item.skillId);
+    const rows: DemandResultRow[] = INTEL_DEMANDS.map((item) => materializeDemand(item, today))
+      .filter((demand) => !raw.demandId || demand.id === raw.demandId)
+      .filter((demand) => !statuses.length || statuses.includes(demand.status))
+      .map((demand) => {
+        const skillOf = (list: DemandCriterion[]) =>
+          list.filter((criterion) => criterion.type === 'SKILL').map((criterion) => criterion.skillId as string);
+        const must = skillOf(demand.mustHave);
+        const optional = skillOf(demand.optional);
+        const matched = requested
+          .filter((skillId) => must.includes(skillId) || optional.includes(skillId))
+          .map((skillId) => `${skillName(skillId)} (${must.includes(skillId) ? 'must-have' : 'optional'})`);
+        return { demand, matched, mustMatches: requested.filter((skillId) => must.includes(skillId)).length };
+      })
+      .filter((item) =>
+        filters.skillMatch === 'ANY' ? !requested.length || item.matched.length > 0 : item.matched.length === requested.length
+      )
+      .sort((a, b) => b.mustMatches - a.mustMatches || a.demand.startDate.localeCompare(b.demand.startDate))
+      .map(({ demand, matched }) => {
+        const evaluation = evaluateDemand(rule, demand, DEFAULT_WEIGHTS, today);
+        return {
+          demandId: demand.id,
+          code: demand.code,
+          title: demand.title,
+          client: demand.client,
+          role: demand.role,
+          status: demand.status,
+          startDate: demand.startDate,
+          mustHave: demand.mustHave.map(criterionLabel),
+          optional: demand.optional.map(criterionLabel),
+          matched,
+          eligibleCount: evaluation.eligibleCount,
+          evaluated: evaluation.evaluated,
+        };
+      });
+    return {
+      kind: 'DEMANDS',
+      intent,
+      total: rows.length,
+      rows,
+      notes: [
+        'Demands come from Demand Management (sample demands in this demo). Search only reads them.',
+        '"Eligible" = internal people in your scope who meet every must-have criterion.',
+      ],
+    };
+  }
+
   if (intent === 'DEMAND_MATCH') {
     if (!rule.scope.canMatch) return null;
-    const demand = sanitizeDemand(raw.demand, today);
+    const stored = typeof raw.demandId === 'string' ? INTEL_DEMANDS.find((item) => item.id === raw.demandId) : undefined;
+    const demand = stored ? materializeDemand(stored, today) : sanitizeDemand(raw.demand, today);
     if (!demand || (!demand.mustHave.length && !demand.optional.length)) return null;
     const result = evaluateDemand(rule, demand, DEFAULT_WEIGHTS, today);
     return {

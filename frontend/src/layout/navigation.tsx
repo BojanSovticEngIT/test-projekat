@@ -20,6 +20,7 @@ import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import TravelExploreOutlinedIcon from '@mui/icons-material/TravelExploreOutlined';
 import ManageSearchOutlinedIcon from '@mui/icons-material/ManageSearchOutlined';
+import BookmarkBorderOutlinedIcon from '@mui/icons-material/BookmarkBorderOutlined';
 import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
 import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined';
@@ -214,8 +215,24 @@ export const navigationModules: NavigationModule[] = [
     label: 'Workforce Intelligence',
     path: '/intelligence',
     icon: <TravelExploreOutlinedIcon />,
-    description: 'Demand matching, recruiting figures, AI architecture and search costs. Analytics previews belong to Reports & Workforce Analytics.',
+    description: 'Workforce-wide search, saved searches, demand matching, recruiting figures, AI architecture and search costs. Analytics previews belong to Reports & Workforce Analytics.',
     items: [
+      {
+        // Card on the Workforce Intelligence page; the sidebar link is the primary "Search & Discovery" item above.
+        label: 'Search & Discovery',
+        path: '/search',
+        description: 'One search across skills, allocations and demands',
+        icon: <ManageSearchOutlinedIcon />,
+        roles: SEARCH_ROLES,
+        inSidebar: false
+      },
+      {
+        label: 'Saved searches',
+        path: '/intelligence/saved-searches',
+        description: 'Reopen and re-run your saved searches',
+        icon: <BookmarkBorderOutlinedIcon />,
+        roles: SEARCH_ROLES
+      },
       {
         // Belongs to Reports & Workforce Analytics (Module 06); kept off the sidebar, reachable from the module page.
         label: 'Dashboard (Reports preview)',

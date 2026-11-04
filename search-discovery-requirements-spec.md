@@ -3,7 +3,7 @@ id: m4-search-discovery
 title: "Module 04: Search & Discovery — Requirements Specification"
 status: draft for independent review
 approved: false
-version: 0.1
+version: 0.2 (cross-module discovery)
 created: 2026-11-04
 project: workforce-platform
 ---
@@ -61,6 +61,8 @@ project: workforce-platform
 
 ## A. Executive summary
 
+**Central idea.** Users can search across the workforce, its skills, experience, projects, availability and demands through **one unified discovery experience**. Modules 01–03 stay the owners of their data and workflows (§B.3–B.6).
+
 **Purpose.** Search & Discovery (S&D) lets authorised users find internal people by skills, experience, projects and availability. Users can work with filters or ask in plain language (English or Serbian). They can also answer simple workforce questions on demand (counts, percentages, comparisons) and rank people against existing staffing demands.
 
 **Business problem.** PMO must have "a reliable, searchable, history-aware view of people availability and candidate fit" [OS §1.2]. Today that knowledge is spread across Excel files and personal memory [OS §1.1, M3 §1]. The PMO staffing workflow already expects a step where PMO "searches for available people using Module 02 availability combined with Module 01 skill data" and sees "matched skills, missing skills, availability percentage" [OS §5.1 steps 2–3]. Module 3 delegates real candidate search to Module 4 [M3 §3, C-03].
@@ -104,6 +106,112 @@ project: workforce-platform
 - **SD-B-03 (Proposed).** S&D answers on-demand questions with counts, percentages and comparisons (SD-FR-050–053). Standing dashboards and trends belong to Module 06 [M3 §3 non-goals; REV]. The demo's "Dashboard" and "Experience analytics" pages are labelled "Reports preview" for this reason.
 - **SD-B-04 (Requires validation).** External applicant figures: Module 03 owns external persons [M3 §4.12]. Whether S&D shows recruiting counts at all is open (SD-DEC-011).
 - **SD-B-05 (Confirmed).** No CV generation in S&D [M3 §3, OS §2].
+- **SD-B-06 (Proposed).** S&D is a **unified discovery layer** over Modules 01–03. It reads their data, combines criteria across them and links back to them for any follow-up action. It never edits their data or re-implements their workflows (B.3–B.8).
+
+### B.3 Data consumed per module (ownership)
+
+"Code evidence" names what exists in this repository [CODE]. "Demo source" is what the demo uses instead. **The demo reads none of the real APIs.**
+
+| Data | Owner | Code evidence (entity / API) | S&D use | Demo source |
+|---|---|---|---|---|
+| Person: name, title, job profile, location, status, contract type, FTE, manager | 01 (synced from HR [OS §8.3]) | `Employee`; `GET /api/employees` | Results, filters, row scope, availability capacity | Generated sample people |
+| Skill catalogue and categories | 01 | `Skill`, `SkillCategory` | Criteria vocabulary, AI vocabulary | Sample catalogue (30 skills) |
+| Employee skills: self / validated level, validation status, years, last used | 01 | `EmployeeSkill`, `EmployeeSkillHistory`; `GET /api/employees/{id}/skills` | Skill filters, years, ranking, statistics | Sample skills with "since" dates |
+| Certificates | 01 | `Certificate` | Matching criterion | Sample certificates |
+| Projects and clients (incl. industry) | 02 | `Project`, `Client.verticalN1/N2`; `/api/projects` | Project filters, industry experience | Sample projects with industry on the project |
+| Allocations and history | 02 | `Allocation`, `AllocationHistory`; `/api/allocations`, `GET /api/employees/{id}/allocation-history` | Current project, tenure, roll-off, project history | Sample allocations |
+| Availability and bench | 02 | `AvailabilityService`, `BenchService`; `GET /api/workforce/availability`, `/bench` | Availability and bench filters, matching availability | Recomputed in the browser (same formula, no leave) |
+| Org structure (horizontal, vertical) | 02 | `HorizontalNode`, `EmployeeHorizontalAssignment`, `EmployeeVerticalAssignment` | Unit filters, row scope | Sample unit tree |
+| Engagement skills (skills used per allocation) | 02 | `EngagementSkill` | Project-derived experience, "used on projects" | Skills per sample allocation |
+| Seniority / range code | 02 | `EmployeeWorkforceProfile` | Restricted filter | Sample values |
+| Demands and their criteria | 03 | `Demand`, `DemandSkill` (must-have, optional, level); `GET /api/demands`, `GET /api/demands/{id}` | Demand results, matching criteria | 14 sample demands with extra fields (weights, years, non-skill criteria) |
+| Candidates and proposal | 03 | `Candidate` (`source = BENCH_SEARCH`); `POST /api/demands/{id}/candidates` | "Propose" hand-off | Simulated (dialog only) |
+| External applicants | 03 (recruiting) | `ExternalPerson` (`fullName`, `email`) | Recruiting figure only | Sample applicants with first/last name and application date |
+
+### B.4 Searches that combine modules
+
+| Question pattern | 01 Skills | 02 Workforce | 03 Demands | Result | Demo |
+|---|:-:|:-:|:-:|---|---|
+| "Java developers with more than 3 years" | ✓ | | | People | ✓ |
+| "Available Vue developers" / "…next month" | ✓ | ✓ | | People | ✓ |
+| "Java and Spring Boot, not currently allocated" | ✓ | ✓ | | People | ✓ |
+| "People who worked on e-commerce projects" | | ✓ | | People | ✓ |
+| "Employees in Software Factory" | | ✓ | | People | ✓ |
+| "On the same project for more than 2 years" (EN/SR) | | ✓ | | Statistic + people | ✓ |
+| "What percentage are Java developers?" | ✓ | ✓ (population) | | Statistic + people | ✓ |
+| "Show open demands requiring Java" | ✓ (vocabulary) | ✓ (eligible counts) | ✓ | Demands | ✓ |
+| "Employees matching demand DEM-M05" / "…the Senior Java Developer demand" | ✓ | ✓ | ✓ | Ranked match + people | ✓ |
+| "Java must-have, Spring Boot optional" (ad-hoc) | ✓ | ✓ | (criteria only) | Ranked match + people | ✓ |
+| "How many external applicants this month?" | | | ✓ (recruiting) | Recruiting figure | ✓ |
+| "Java developers who worked on projects using Kafka" | ✓ | ✓ | | People | ✗ (needs a "skill used on project" filter; documented only) |
+
+### B.5 Result types and where they lead
+
+| Result type | Contents | Follow-up action | Owner of the follow-up |
+|---|---|---|---|
+| People | Person, unit, current project with dates, allocation and free %, matched skills, reasons | Person details drawer | S&D (view only). Production: link to the person's profile in 01/02 (missing) |
+| Statistic | Count, denominator, %, alternative definitions, breakdown, people behind it | "Show the people" | S&D |
+| Comparison | Per technology: count, %, advanced, average years, available now | "Show the people" | S&D |
+| Ranked match | Eligible count, top candidates with score and optional criteria met | "Open in Demand matching" → propose | Proposal recorded by 03 |
+| Demands | Demand, status, start, must-have / optional, why it matches, eligible people count | "Match people" → Demand matching | Demand data and lifecycle: 03 |
+| Recruiting figure | Current-month count | "Open External applicants" (names only) | Recruiting data: 03 |
+
+The UI shows the result type and the data areas used ("Uses: Skill Matrix + Workforce & allocation + Demand Management") for every AI question.
+
+### B.6 Interaction with the existing modules
+
+1. **Read.** S&D reads 01/02/03 data at query time, or from a derived read model (§D). It never stores a second copy as the system of record (SD-FR-123).
+2. **Explain.** Every result shows which criteria matched, so users can verify them against the owning module.
+3. **Hand off.**
+   - Proposing a candidate goes to Module 03 (`POST /api/demands/{id}/candidates`).
+   - Creating allocations stays in Module 02 (via Module 03's placement flow [M3 F-07]).
+   - Editing skills stays in Module 01.
+4. **No duplicate workflows.**
+   - S&D does not create or edit demands, run the candidate pipeline, create allocations or validate skills.
+   - The demo's matching screen lets users change criteria and weights as a **what-if** only; nothing is saved to the demand.
+   - The Module 03 demand list remains the place to manage demands (see SD-CON-008).
+
+### B.7 Status of the cross-module capabilities
+
+| Capability | Status |
+|---|---|
+| Unified search UI with typed results, domains shown, saved searches page | **Demo** |
+| Query interpretation (EN/SR, intents, related terms) | **Demo — simulated** (rules, no LLM) |
+| People, statistics, comparisons, matching, demand results, recruiting figure | **Demo** on sample data |
+| Proposing a candidate | **Demo — simulated**; the backend API **exists** |
+| Reading real Module 01/02/03 data | **Not implemented** |
+| Backend permission enforcement | **Not implemented** (browser-side only) |
+| Semantic search | **Proposed** (requires SD-DEC-010) |
+
+### B.8 Missing integrations (production)
+
+| # | Missing | Depends on |
+|---|---|---|
+| I-1 | A Search & Discovery backend API (search, interpretation, answers, saved searches); today all `/api/intelligence/*` calls are answered in the browser | S&D build |
+| I-2 | Bulk, filtered read of employee skills. `GET /api/employees` ignores its skill filters (known Module 01 defect [M3P]); skills are otherwise read per employee | Module 01 fix or S&D read model |
+| I-3 | Use of the Module 02 availability API, including leave and confirmed-status rules | Module 02 |
+| I-4 | Reading real demands from Module 03; storing optional weights, minimum years and non-skill criteria | Module 03 change (SD-DEC-007) |
+| I-5 | Calling the existing propose-candidate API | I-1, I-4 |
+| I-6 | Showing a person's other active demands [M3 M-02a] | Module 03 read API |
+| I-7 | Applicant application date and first/last name split; a recruiting-figure endpoint | Client source system (SD-DEC-011), Module 03 |
+| I-8 | Link from a person to their profile (Module 01/02) and to CV generation (Module 05) | Route / contract (SD-DEC-018) |
+| I-9 | A "skill used on a project" filter from engagement skills | Module 02 data; small S&D change |
+| I-10 | Real LLM, search audit, database tables for saved searches and history | SD-DEC-027, SD-DEC-015 |
+
+### B.9 Assumptions made for the demo (to be confirmed)
+
+| ID | Assumption | Where it shows |
+|---|---|---|
+| SD-ASM-001 | Demand data in search follows the **matching right** (Admin, PMO, HR BP); HR and Line Managers get no demand results | Demand results, matching, "our new project" |
+| SD-ASM-002 | The recruiting figure may be asked in search by roles with applicant access (Admin, PMO, HR BP: list; Management: count only) | Recruiting figure |
+| SD-ASM-003 | **PMO has broad access:** every internal person, every demand, matching, and applicant names. PMO does **not** see seniority or cost code | All entry points |
+| SD-ASM-004 | "Open demands" = Open and In selection; On hold excluded unless asked | Demand results |
+| SD-ASM-005 | A demand "requires" a skill if the skill is a must-have **or** optional criterion; must-have matches rank first | Demand results |
+| SD-ASM-006 | For "people matching DEM-x", the people list shows everyone with the must-have **skills**; the ranking applies all must-haves, including availability | Match + people |
+| SD-ASM-007 | Matching uses default component weights (40/25/15/20) unless changed on the matching screen | Match |
+| SD-ASM-008 | Sample demands stand in for Module 03 demands and carry fields Module 03 does not store yet | Demands, matching |
+| SD-ASM-009 | Contractors appear in people search but not in workforce statistics | People vs statistics |
+| SD-ASM-010 | Industry is stored on projects in the demo (production: on the client) | Industry filter |
 
 ---
 
@@ -132,6 +240,34 @@ Each requirement is written as:
   2. Inactive staff never appear [OS §3.3].
   3. New hires: see SD-DEC-012.
 - Deps: SD-DEF-007. Src: [WB]; [OS §3.3].
+
+**SD-FR-003 — Result type follows the question** — Must · Proposed · Demo
+- Description: one search covers people (skills from Module 01; projects, allocations and availability from Module 02), demands (Module 03) and recruiting figures. The answer type depends on the question:
+  - people;
+  - a statistic;
+  - a comparison;
+  - a ranked match;
+  - demands;
+  - a recruiting figure.
+- AC:
+  1. "Find Java developers…" returns people.
+  2. "Show demands requiring Java" returns demands.
+  3. "Find employees matching demand DEM-M05" returns a ranked match for that stored demand.
+  4. The UI shows the result type and the data areas the question used.
+  5. Each result can be opened in its owning screen (demand → Demand matching; applicants → External applicants).
+- Src: workshop request "generic workforce-wide search" (4 Nov 2026); [M3 §4.11].
+
+**SD-FR-004 — Demand discovery** — Should · Proposed · Demo (sample demands)
+- AC:
+  1. Demands can be found by required skill and status.
+  2. Each result shows its must-have and optional criteria, why it matches ("Java (must-have)"), and how many in-scope people meet every must-have.
+  3. Requires demand access (same rule as demand matching).
+  4. Search only reads demands; Module 03 owns them (SD-B-02).
+- Deps: Module 03 demand read API.
+
+**SD-FR-005 — Recruiting figure on request** — Could · Requires validation · Demo
+- AC: "How many external applicants did we receive this month?" returns the current-month count with a link to the External applicants view (names only). It never returns applicant records in people results. It is available only with applicant access (SD-FR-093).
+- Deps: SD-DEC-011, SD-B-04.
 
 ### C.2 Exact and structured search
 
@@ -286,6 +422,34 @@ General discovery ranking is defined in §F. It is separate from demand candidat
   2. The ranking formula is documented and deterministic: the same data and criteria give the same order.
 - Src: [WB]; [OS §5.1 step 3] (match explanation).
 
+**SD-FR-047 — Alternative suggestions when exact results are few** — Should · Proposed · Demo
+- Description: when a people search finds fewer than 3 exact matches (proposed threshold), S&D also suggests close alternatives. Each alternative relaxes exactly one original criterion:
+  - one seniority level lower (only for roles allowed to see seniority);
+  - one skill level lower;
+  - somewhat less experience;
+  - missing one of several required skills;
+  - a related technology from the fixed related-terms list (SD-FR-020);
+  - partial availability;
+  - available within 30 days after the needed date.
+- AC:
+  1. Alternatives are shown in a separate, visually distinct section, never in the exact list or count.
+  2. Each alternative states why it is suggested and lists every original criterion it does not meet, with actual vs requested values (e.g. "AWS: not in profile", "Currently partially allocated (asked on bench)").
+  3. No alternative is presented as meeting the original search.
+  4. In must-have matching, must-haves are **never** relaxed automatically; anyone missing a must-have is labelled "possible exception, not a valid match".
+  5. No alternatives for statistics, demand results or name searches.
+  6. Alternatives respect the same permissions as exact results.
+- Deps: SD-DEC-031 (which relaxations and threshold are acceptable). Src: workshop request (4 Nov 2026).
+
+**SD-FR-048 — Results-first layout** — Should · Proposed · Demo
+- AC: the visual order is:
+  1. search input and essential filters;
+  2. a one-line summary of what was understood, with result type;
+  3. result count;
+  4. results;
+  5. alternatives;
+  6. examples, tips, notes and the structured query, which stay collapsed and expand on request.
+  Permission notes that change the answer stay visible.
+
 **SD-FR-046 — User-selectable sort** — Should · Proposed · Demo
 - AC: the user can sort by relevance, name, availability, project tenure, skill years and roll-off date.
 
@@ -439,6 +603,12 @@ See §G for the model. Requirements:
   6. run it again on current data.
   The stored content is the structured criteria (plus the original question, if any), not the result rows.
 - Src: [WB].
+
+**SD-FR-104 — Saved searches page** — Should · Proposed · Demo
+- AC:
+  1. A "Saved searches" page under Workforce Intelligence lists each saved search: name, mode, original question, criteria in plain language, answer type, last run.
+  2. "Run" opens Search & Discovery and re-runs it on current data.
+  3. Delete asks for confirmation.
 
 **SD-FR-101 — Search history** — Should · Confirmed · Demo
 - AC: recent searches are listed separately from saved searches, can be re-run and saved, and can be cleared. Retention: SD-DEC-015.
@@ -788,6 +958,10 @@ None of these definitions is final. Each lists alternatives, the demo's current 
 | SD-DEC-024 | Effective level definition | Every skill filter | SD-DEF-001 | Validated if available | M01 owner | Open |
 | SD-DEC-025 | "Available" and "next month" defaults | Availability answers | SD-DEF-009/010 | ≥ 50%; whole first two weeks | PMO | Open |
 | SD-DEC-026 | Threshold wording | Off-by-one disputes | Strict / inclusive | Follow the user's words; default strict | PMO | Open |
+| SD-DEC-028 | Should S&D return demands at all, and to whom? (Module 03 already has a demand list) | Overlap with Module 03; who sees demand data | Yes, as cross-module results linking to Module 03 / no, only matching | Yes, with the matching right (SD-ASM-001) | PMO + M03 owner | Open |
+| SD-DEC-029 | PMO's breadth of access in search, including applicant names and seniority / cost code | Consistent PMO experience vs privacy | As in SD-ASM-003 / also seniority and cost code | As in SD-ASM-003 | PMO + HR + DPO | Open |
+| SD-DEC-030 | Recruiting figure inside search (vs only in Module 03 / 06) | Boundary and privacy | Keep (count only) / remove | Keep as count with link; decide with SD-DEC-011 | HR + PMO | Open |
+| SD-DEC-031 | Alternative suggestions: which criteria may be relaxed, threshold (demo: < 3 exact), and whether related technologies count as alternatives | Users may treat suggestions as matches | Per SD-FR-047 / fewer relaxations / none | As SD-FR-047, always labelled with unmet criteria | PMO | Open |
 | SD-DEC-027 | AI provider, model, region, budget | Production AI | Azure OpenAI models / self-hosted | Azure OpenAI small model, EU data zone | Architecture + DPO | Open |
 
 ### L.2 Source conflicts
@@ -800,6 +974,7 @@ None of these definitions is final. Each lists alternatives, the demo's current 
 | SD-CON-004 | Internal candidate search endpoint planned in Module 03 (`GET /candidates/search/internal`) vs search owned by Module 04 | [M3P] vs [M3 §3, §4.11] | Module 04 owns search; Module 03 may call it | Avoid two search implementations |
 | SD-CON-005 | Skill levels 1–5 (Module 01) vs engagement levels Beginner / Practitioner / Expert | [CODE; M3P "map 5 levels to 3"] vs [OS §5.5] | Search uses 1–5 for employee skills; engagement levels only for project-derived evidence | Mapping must be agreed (part of SD-DEC-004) |
 | SD-CON-006 | Six roles [OS §4] vs three Module 03 roles [M3 §4.2] vs Management role in code | [OS], [M3], [CODE] | Roles per H.2 (requires validation) | SD-DEC-014 |
+| SD-CON-008 | Demand search in S&D vs the Module 03 demand list, which already filters by status and "searches by ID, title, or technology" | [M3 D-02] vs this document (SD-FR-004) | S&D shows demands only as cross-module results (with eligible-people counts) and links to Module 03; demand management stays in Module 03 | Avoid two demand lists with different rules; confirm with SD-DEC-028 |
 | SD-CON-007 | Older team docs 02/06 definitions (current project = highest %, skill years from earliest project) vs current definitions | docs 02/06 vs this document | This document | Newer, corrected per audit |
 
 ---
@@ -842,19 +1017,19 @@ All scenarios use demo data unless stated otherwise. The expected values below c
 - the `integration_event_outbox`.
 
 **2. Implemented in the demo only (simulated):**
-- SD-FR-001, 002;
+- SD-FR-001–005 (demands and the recruiting figure on sample data);
 - 010–019;
 - 020 (related terms);
 - 022;
 - 030–037 (AI simulated by rules);
 - 040, 041;
-- 045, 046;
+- 045, 046, 047 (alternatives), 048 (results-first layout);
 - 050–054;
 - 060–062;
 - 070–077 (sample demands);
 - 079 (simulated);
 - 090–093 (sample data);
-- 100, 101, 103 (browser storage);
+- 100, 101, 103, 104 (browser storage);
 - 110, 111;
 - 120 (browser export);
 - 131–134 (browser-side only).

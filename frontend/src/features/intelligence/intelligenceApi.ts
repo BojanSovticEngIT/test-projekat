@@ -46,7 +46,9 @@ export const fetchSearch = async (
   filters: SearchFilters,
   sort: SearchSort,
   page: number,
-  size: number
+  size: number,
+  // Ask the backend for clearly separated alternative suggestions when there are too few exact matches.
+  withAlternatives = false
 ): Promise<SearchResponse> =>
   (
     await axiosClient.post<SearchResponse>(`${BASE}/search`, {
@@ -54,6 +56,7 @@ export const fetchSearch = async (
       sort,
       page,
       size,
+      withAlternatives,
     })
   ).data;
 
@@ -62,13 +65,14 @@ export const useSearch = (
   sort: SearchSort,
   page: number,
   size: number,
-  runId: number
+  runId: number,
+  withAlternatives = false
 ) =>
   useQuery({
-    queryKey: ['intelligence', 'search', filters, sort, page, size, runId],
+    queryKey: ['intelligence', 'search', filters, sort, page, size, runId, withAlternatives],
     enabled: filters !== null,
     placeholderData: keepPreviousData,
-    queryFn: () => fetchSearch(filters as SearchFilters, sort, page, size),
+    queryFn: () => fetchSearch(filters as SearchFilters, sort, page, size, withAlternatives),
   });
 
 export const useInterpret = () =>

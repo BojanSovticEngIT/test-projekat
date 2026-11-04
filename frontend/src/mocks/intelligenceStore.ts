@@ -2,6 +2,7 @@
 // Stored in this browser's localStorage, keyed by username. History keeps criteria only, never result data.
 import type {
   AnswerSpec,
+  DemandStatus,
   QueryIntent,
   ChartDatum,
   PricingConfig,
@@ -70,7 +71,10 @@ const INTENTS: QueryIntent[] = [
   'SKILL_DURATION',
   'AVAILABILITY',
   'DEMAND_MATCH',
+  'DEMAND_SEARCH',
+  'APPLICANT_COUNT',
 ];
+const DEMAND_STATUSES: DemandStatus[] = ['OPEN', 'IN_SELECTION', 'ON_HOLD'];
 
 // The statistic to recompute when a saved AI search is run again (filters are stored separately).
 export const sanitizeAnswerSpec = (input: unknown): AnswerSpec | null => {
@@ -82,6 +86,10 @@ export const sanitizeAnswerSpec = (input: unknown): AnswerSpec | null => {
       ? { compareSkillIds: raw.compareSkillIds.filter((id) => typeof id === 'string').slice(0, 4) }
       : {}),
     ...(raw.demand ? { demand: sanitizeDemand(raw.demand) } : {}),
+    ...(typeof raw.demandId === 'string' ? { demandId: raw.demandId.slice(0, 40) } : {}),
+    ...(Array.isArray(raw.demandStatuses)
+      ? { demandStatuses: raw.demandStatuses.filter((status) => DEMAND_STATUSES.includes(status)) }
+      : {}),
   };
 };
 
