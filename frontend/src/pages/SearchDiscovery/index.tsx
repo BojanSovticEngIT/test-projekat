@@ -522,7 +522,7 @@ function SearchDiscoveryPage(): JSX.Element {
                     <Button type="submit" variant="contained" startIcon={<SendIcon />} disabled={!aiQuery.trim() || interpret.isPending}>
                       Ask
                     </Button>
-                    <Button startIcon={<RestartAltIcon />} onClick={resetAi} disabled={interpret.isPending || (!aiQuery && !interpretation)}>
+                    <Button variant="text" startIcon={<RestartAltIcon />} onClick={resetAi} disabled={interpret.isPending || (!aiQuery && !interpretation)}>
                       Clear
                     </Button>
                   </Stack>
@@ -537,7 +537,7 @@ function SearchDiscoveryPage(): JSX.Element {
                 {QUICK_PROMPTS.map((prompt) => (
                   <Chip key={prompt} size="small" variant="outlined" label={prompt} onClick={() => void runAi(prompt)} />
                 ))}
-                <Button size="small" startIcon={<HelpOutlineIcon />} onClick={() => setShowHelp(!showHelp)} aria-expanded={showHelp}>
+                <Button variant="text" size="small" startIcon={<HelpOutlineIcon />} onClick={() => setShowHelp(!showHelp)} aria-expanded={showHelp}>
                   {showHelp ? 'Hide examples & tips' : 'More examples & tips'}
                 </Button>
               </Stack>
@@ -607,13 +607,13 @@ function SearchDiscoveryPage(): JSX.Element {
                     ))}
                     <Chip size="small" variant="outlined" label={`Result: ${RESULT_LABELS[interpretation.resultKind]}`} />
                     <Box sx={{ flexGrow: 1 }} />
-                    <Button size="small" startIcon={<TuneIcon />} onClick={() => setShowEditor(!showEditor)} aria-expanded={showEditor}>
+                    <Button variant="text" size="small" startIcon={<TuneIcon />} onClick={() => setShowEditor(!showEditor)} aria-expanded={showEditor}>
                       Edit criteria
                     </Button>
-                    <Button size="small" onClick={() => setShowRefine(!showRefine)} aria-expanded={showRefine}>
+                    <Button variant="text" size="small" onClick={() => setShowRefine(!showRefine)} aria-expanded={showRefine}>
                       Refine
                     </Button>
-                    <Button size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setShowDetails(!showDetails)} aria-expanded={showDetails}>
+                    <Button variant="text" size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setShowDetails(!showDetails)} aria-expanded={showDetails}>
                       Details{interpretation.notes.length ? ` (${interpretation.notes.length})` : ''}
                     </Button>
                   </Stack>
@@ -672,7 +672,7 @@ function SearchDiscoveryPage(): JSX.Element {
                           • {note}
                         </Typography>
                       ))}
-                      <Button size="small" sx={{ mt: 1 }} startIcon={<DataObjectIcon />} onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
+                      <Button variant="text" size="small" sx={{ mt: 1 }} startIcon={<DataObjectIcon />} onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
                         {showJson ? 'Hide structured query' : 'Show structured query (JSON)'}
                       </Button>
                     </Box>

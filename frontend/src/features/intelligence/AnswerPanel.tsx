@@ -61,9 +61,11 @@ export function AiThinking({ active }: { active: boolean }): JSX.Element | null 
 
 function HowCalculated({ answer }: { answer: StatAnswer | CompareAnswer }): JSX.Element {
   const [open, setOpen] = useState(false);
+  // Each new answer starts with the explanation collapsed.
+  useEffect(() => setOpen(false), [answer]);
   return (
     <Box sx={{ mt: 1.5 }}>
-      <Button size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setOpen(!open)} aria-expanded={open}>
+      <Button variant="text" size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setOpen(!open)} aria-expanded={open}>
         {open ? 'Hide how this was calculated' : 'How this was calculated'}
       </Button>
       <Collapse in={open}>
@@ -362,7 +364,7 @@ function DemandsView({ answer }: { answer: DemandsAnswer }): JSX.Element {
                     {row.eligibleCount} of {row.evaluated}
                   </TableCell>
                   <TableCell>
-                    <Button size="small" endIcon={<OpenInNewIcon />} onClick={() => navigate(`/intelligence/matching?demand=${row.demandId}`)}>
+                    <Button variant="text" size="small" endIcon={<OpenInNewIcon />} onClick={() => navigate(`/intelligence/matching?demand=${row.demandId}`)}>
                       Match people
                     </Button>
                   </TableCell>
