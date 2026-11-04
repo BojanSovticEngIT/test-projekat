@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RecommendationCard, { recommendFromAnswer } from './Recommendation';
 import type { ApplicantsAnswer, CompareAnswer, DemandsAnswer, MatchAnswer, QueryAnswer, StatAnswer } from '../../types/intelligence.types';
 
 const STEPS = ['Reading the question', 'Extracting criteria', 'Validating against the catalogue', 'Querying workforce data'];
@@ -254,7 +255,10 @@ function MatchView({ answer }: { answer: MatchAnswer }): JSX.Element {
           </Button>
         </Box>
       </Stack>
-      <Stack spacing={1} sx={{ mt: 1.5 }}>
+      <Box sx={{ mt: 1.5 }}>
+        <RecommendationCard {...recommendFromAnswer(answer)} />
+      </Box>
+      <Stack spacing={1}>
         {answer.top.map((item, index) => (
           <Stack key={item.employeeId} direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
             <Typography sx={{ minWidth: 24 }} color="text.secondary">

@@ -812,6 +812,7 @@ Columns: priority · knowledge status · production implementation · demo · mo
 | SD-FR-078 | Other demands of a person | Should | Verified [M3 M-02a] | Not impl. | Not shown | 03 | — |
 | SD-FR-079 | Propose candidate to Module 03 | Must | Verified [M3 C-03; CODE] | Partially impl. (API exists) | Simulated | 03 | — |
 | SD-FR-080 | Budget status | Should | Verified [M3 M-02c] | Not impl. | Not shown | 03 | SD-DEC-008 |
+| SD-FR-081 | Recommended candidate (rule-based, not AI) | Should | Proposed [WR] | Not impl. | Shown | 04 | SD-DEC-006 |
 | SD-FR-090 | Applicants separated | Must | Verified [WB] | Not impl. | Shown | 03 | — |
 | SD-FR-091 | Applicant names only | Must | Verified [WB] · Blocked (source has full name only) | Not impl. | Shown (sample) | 03 | SD-DEC-011 |
 | SD-FR-092 | Monthly applicant count | Must | Verified need [WB] · Blocked (no application date) | Not impl. | Shown (sample) | 03 | SD-DEC-011 |
@@ -987,6 +988,12 @@ Business value, behaviour and acceptance criteria. Sources and statuses are in �
   - AC3: Module 03 shows the candidate with source "Bench search (Module 4)".
   - *Demo AC: dialog only.*
 - **SD-FR-080** — AC: a person above the demand's cost limit is labelled "Above budget", not blocked.
+- **SD-FR-081** — *Value:* PMO sees the best option at a glance, with reasons.
+  - AC1: the top eligible person (highest fit score) is shown as "Recommended", with the deciding reasons: must-haves met, optional criteria met, availability.
+  - AC2: if the next person is within 5 points, a "close second" is shown with what they are stronger on.
+  - AC3: if nobody meets every must-have, no recommendation is made; the closest person is shown only as a possible exception with the missing criteria.
+  - AC4: the recommendation is derived by fixed rules from the deterministic ranking; no LLM chooses, scores or reorders candidates (SD-FR-073).
+  - AC5 (optional, production): an LLM may write a plain-language summary using only the computed results.
 
 **C.10 External applicants**
 - **SD-FR-090** — AC: never in people search, AI answers, statistics, matching or S&D exports.

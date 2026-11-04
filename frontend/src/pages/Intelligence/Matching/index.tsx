@@ -38,6 +38,7 @@ import {
   Typography
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import RecommendationCard, { recommendFromCandidates } from '@features/intelligence/Recommendation';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { WorkforcePageHeader } from '../../../components/WorkforcePageHeader';
 import ExportMenu from '../../../components/ExportMenu/ExportMenu';
@@ -632,6 +633,7 @@ function DemandMatchingPage(): JSX.Element {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Fit score 0–100 = weighted mix of optional criteria met, competency level, relevant project experience and availability. Tick 2–4 people to compare them.
                 </Typography>
+                <RecommendationCard {...recommendFromCandidates(result.eligible, result.notEligible)} />
                 <Stack spacing={1}>
                   {sortCandidates(result.eligible).map(card)}
                   {!result.eligible.length ? <Alert severity="info">Nobody meets every must-have criterion. See the near misses below, or relax a must-have.</Alert> : null}
