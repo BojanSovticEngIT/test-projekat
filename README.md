@@ -13,14 +13,14 @@ tested, and demoed incrementally.
 1. Module 1: Skill Matrix and Competency Management
 2. Module 2: Workforce Management and Resource Allocation
 3. Module 3: Demand Management and Staffing Tracking
-4. Module 4: TBD
+4. Module 4: Workforce Intelligence (including Search & Discovery)
 
 ## Current Status
 
 - Module 1 is implemented in this repository.
 - Module 2 is planned and documented with implementation tasks.
 - Module 3 is planned as the next major expansion.
-- Module 4 is reserved for future scope definition.
+- Module 4 includes a Search & Discovery frontend demo; its standalone AI-build specification is linked below.
 
 ## Documentation Map
 
@@ -29,6 +29,7 @@ tested, and demoed incrementally.
 - Module slices (MVP scope): [docs/spec/slices](docs/spec/slices)
 - API contract: [docs/api/openapi.yaml](docs/api/openapi.yaml)
 - Architecture references: [docs/architecture](docs/architecture)
+- AI-ready Module 4 Search & Discovery demo specification: [module-04-search-discovery-ai-spec.md](docs/spec/module-04-search-discovery-ai-spec.md)
 
 ## Repository Structure
 
