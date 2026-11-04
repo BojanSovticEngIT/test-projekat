@@ -25,6 +25,8 @@ import {
   Stack,
   Tab,
   Tabs,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   TextField,
   Typography
@@ -40,6 +42,7 @@ import { HistoryDrawer, SaveSearchDialog, SavedSearchesDrawer } from '@features/
 import {
   fetchSearch,
   useAnswer,
+  useDemands,
   useIntelligenceCatalog,
   useInterpret,
   useRecordRun,
@@ -63,6 +66,7 @@ import useAuthStore from '@store/authStore';
 import type { Report } from '../../lib/export';
 import type {
   AnswerSpec,
+  DemandStatus,
   InterpretResponse,
   IntelligenceCatalog,
   QueryAnswer,
@@ -143,6 +147,8 @@ const PROMPT_GROUPS: { label: string; prompts: string[] }[] = [
 // A few short prompts next to the search box; the full list lives under "More examples & tips".
 const QUICK_PROMPTS = ['Java developers with Kafka and AWS', 'Advanced React developers on bench', 'Show open demands requiring Java.', 'What percentage of our employees are Java developers?'];
 
+const DEMAND_STATUS_LABELS: Record<DemandStatus, string> = { OPEN: 'Open', IN_SELECTION: 'In selection', ON_HOLD: 'On hold' };
+
 const RESULT_LABELS: Record<ResultKind, string> = {
   PEOPLE: 'people',
   STATISTIC: 'number with denominator',
@@ -222,6 +228,11 @@ function SearchDiscoveryPage(): JSX.Element {
   const [showHelp, setShowHelp] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // Structured search across modules: people (01 + 02, optionally ranked for a demand) or demands (03).
+  const [structuredTarget, setStructuredTarget] = useState<'PEOPLE' | 'DEMANDS'>('PEOPLE');
+  const [matchDemandId, setMatchDemandId] = useState<string | null>(null);
+  const [demandSkillIds, setDemandSkillIds] = useState<string[]>([]);
+  const [demandStatusFilter, setDemandStatusFilter] = useState<DemandStatus[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchResultRow | null>(null);
   const [savedOpen, setSavedOpen] = useState(false);
@@ -242,6 +253,7 @@ function SearchDiscoveryPage(): JSX.Element {
   const search = useSearch(run?.filters ?? null, run?.sort ?? 'RELEVANCE', page, size, run?.runId ?? 0, wantsAlternatives);
   const answerRequest = useMemo(() => (run?.answerSpec ? { ...run.answerSpec, filters: run.filters } : null), [run]);
   const answer = useAnswer(answerRequest);
+  const demandOptions = useDemands(Boolean(catalog?.scope.canMatch));
   // Demand and recruiting questions answer with demands or a count, not with a list of employees.
   const peopleListVisible = !run?.answerSpec || !['DEMAND_SEARCH', 'APPLICANT_COUNT'].includes(run.answerSpec.intent);
 
@@ -249,6 +261,34 @@ function SearchDiscoveryPage(): JSX.Element {
     runCounter.current += 1;
     setRun({ ...next, runId: runCounter.current });
     setPage(0);
+  };
+
+  const runStructured = (): void => {
+    if (structuredTarget === 'DEMANDS') {
+      const filters: SearchFilters = { ...createEmptyFilters(), skills: demandSkillIds.map((skillId) => ({ skillId, minLevel: 1, minYears: null })) };
+      const names = catalog ? catalog.skills.filter((skill) => demandSkillIds.includes(skill.id)).map((skill) => skill.name) : [];
+      start({
+        filters,
+        sort: 'RELEVANCE',
+        mode: 'STRUCTURED',
+        label: `Demands${names.length ? ` requiring ${names.join(' and ')}` : ''}${demandStatusFilter.length ? ` (${demandStatusFilter.map((status) => DEMAND_STATUS_LABELS[status]).join(', ')})` : ''}`,
+        query: null,
+        answerSpec: { intent: 'DEMAND_SEARCH', ...(demandStatusFilter.length ? { demandStatuses: demandStatusFilter } : {}) },
+        record: true
+      });
+      return;
+    }
+    const demand = (demandOptions.data ?? []).find((item) => item.id === matchDemandId);
+    if (demand) {
+      // The people list shows everyone with the demand's must-have skills (plus the other filters); the ranking applies all criteria.
+      const skills = demand.mustHave
+        .filter((criterion) => criterion.type === 'SKILL' && criterion.skillId)
+        .map((criterion) => ({ skillId: criterion.skillId as string, minLevel: criterion.minLevel ?? 1, minYears: criterion.minYears ?? null }));
+      const filters: SearchFilters = { ...draft, skills, skillMatch: 'ALL' };
+      start({ filters, sort: 'RELEVANCE', mode: 'STRUCTURED', label: `People for ${demand.code} ${demand.title}`, query: null, answerSpec: { intent: 'DEMAND_MATCH', demandId: demand.id }, record: true });
+      return;
+    }
+    start({ filters: draft, sort: run?.sort ?? 'RELEVANCE', mode: 'STRUCTURED', label: labelFor(draft), query: null, answerSpec: editingSaved?.answerSpec ?? null, record: true });
   };
   const labelFor = (filters: SearchFilters): string => (catalog ? summarize(filters, catalog).join(' · ') : '') || 'Everyone in scope';
 
@@ -683,18 +723,90 @@ function SearchDiscoveryPage(): JSX.Element {
                   Editing saved search "{editingSaved.name}". Change the criteria, then choose "Update saved search".
                 </Alert>
               ) : null}
-              <CriteriaForm catalog={catalog} filters={draft} onChange={setDraft} />
+              {/* What to find: people (Skill Matrix + Workforce, optionally ranked for a demand) or demands (Demand Management). */}
+              {catalog.scope.canMatch ? (
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    Find:
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={structuredTarget}
+                    onChange={(_, value: 'PEOPLE' | 'DEMANDS' | null) => value && setStructuredTarget(value)}
+                    aria-label="What to find"
+                  >
+                    <ToggleButton value="PEOPLE">People</ToggleButton>
+                    <ToggleButton value="DEMANDS">Demands</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Typography variant="caption" color="text.secondary">
+                    {structuredTarget === 'PEOPLE'
+                      ? 'Skills (Skill Matrix), projects, allocation and availability (Workforce); optionally ranked for a demand.'
+                      : 'Demands (Demand Management) that ask for these skills, with how many people could fill them.'}
+                  </Typography>
+                </Stack>
+              ) : null}
+              {structuredTarget === 'DEMANDS' && catalog.scope.canMatch ? (
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <Autocomplete
+                    multiple
+                    fullWidth
+                    size="small"
+                    options={catalog.skills}
+                    groupBy={(option) => option.category}
+                    getOptionLabel={(option) => option.name}
+                    value={catalog.skills.filter((skill) => demandSkillIds.includes(skill.id))}
+                    onChange={(_, skills) => setDemandSkillIds(skills.map((skill) => skill.id))}
+                    renderInput={(fieldParams) => <TextField {...fieldParams} label="Required skills (must-have or optional)" />}
+                  />
+                  <Autocomplete
+                    multiple
+                    size="small"
+                    sx={{ minWidth: 280 }}
+                    options={['OPEN', 'IN_SELECTION', 'ON_HOLD'] as DemandStatus[]}
+                    getOptionLabel={(option) => DEMAND_STATUS_LABELS[option]}
+                    value={demandStatusFilter}
+                    onChange={(_, statuses) => setDemandStatusFilter(statuses)}
+                    renderInput={(fieldParams) => <TextField {...fieldParams} label="Status (empty = all)" />}
+                  />
+                </Stack>
+              ) : (
+                <>
+                  <CriteriaForm catalog={catalog} filters={draft} onChange={setDraft} />
+                  {catalog.scope.canMatch ? (
+                    <Autocomplete
+                      size="small"
+                      sx={{ mt: 2, maxWidth: 560 }}
+                      options={demandOptions.data ?? []}
+                      getOptionLabel={(option) => `${option.code} · ${option.title}`}
+                      value={(demandOptions.data ?? []).find((item) => item.id === matchDemandId) ?? null}
+                      onChange={(_, demand) => setMatchDemandId(demand?.id ?? null)}
+                      renderInput={(fieldParams) => (
+                        <TextField
+                          {...fieldParams}
+                          label="Rank against a demand (optional)"
+                          helperText={
+                            matchDemandId
+                              ? "The ranking uses the demand's must-have and optional criteria; its must-have skills replace the skills above."
+                              : 'Adds the must-have / optional ranking for the chosen demand above the people list.'
+                          }
+                        />
+                      )}
+                    />
+                  ) : null}
+                </>
+              )}
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <Button
-                  variant="contained"
-                  onClick={() => start({ filters: draft, sort: run?.sort ?? 'RELEVANCE', mode: 'STRUCTURED', label: labelFor(draft), query: null, answerSpec: editingSaved?.answerSpec ?? null, record: true })}
-                >
+                <Button variant="contained" onClick={runStructured}>
                   Search
                 </Button>
                 <Button
-                  disabled={isEmptyFilters(draft)}
+                  disabled={isEmptyFilters(draft) && !matchDemandId && !demandSkillIds.length && !demandStatusFilter.length}
                   onClick={() => {
                     setDraft(createEmptyFilters());
+                    setMatchDemandId(null);
+                    setDemandSkillIds([]);
+                    setDemandStatusFilter([]);
                     start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, answerSpec: null, record: false });
                   }}
                 >

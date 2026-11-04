@@ -852,6 +852,7 @@ Business value, behaviour and acceptance criteria. Sources and statuses are in Â
   - AC3: "Find employees matching demand DEM-x" returns a ranked match for that stored demand.
   - AC4: the UI shows result type and data areas used.
   - AC5: each result opens in its owning screen.
+  - AC6: the same cross-module results are available without AI. Structured search offers "Find: People / Demands" (demand access only) and an optional "Rank against a demand" picker for people. *Demo: shown.*
 - **SD-FR-004** â€” *Value:* see which demands need a skill and how many people could fill them.
   - AC1: find demands by required skill and status.
   - AC2: each shows must-have / optional criteria, why it matches, and eligible in-scope people.
