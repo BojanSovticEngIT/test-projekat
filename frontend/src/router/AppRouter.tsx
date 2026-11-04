@@ -52,6 +52,11 @@ const MyAssignmentsPage = lazy(() => import('@pages/MyAssignments'));
 const ModuleDashboardPage = lazy(() => import('@pages/ModuleDashboard'));
 const ToBeImplementedPage = lazy(() => import('@pages/ToBeImplemented'));
 const SearchDiscoveryPage = lazy(() => import('@pages/SearchDiscovery'));
+const IntelligenceDashboardPage = lazy(() => import('@pages/Intelligence/Dashboard'));
+const IntelligenceAnalyticsPage = lazy(() => import('@pages/Intelligence/Analytics'));
+const DemandMatchingPage = lazy(() => import('@pages/Intelligence/Matching'));
+const ExternalApplicantsPage = lazy(() => import('@pages/Intelligence/Applicants'));
+const SearchCostsPage = lazy(() => import('@pages/Intelligence/Costs'));
 
 const placeholderRoutes = [
   { path: '/demand-management/pipeline', title: 'Pipeline' },
@@ -193,9 +198,21 @@ function AppRouter(): JSX.Element {
             <Route element={<ProtectedRoute allowedRoles={getModuleRoles('demand-management')} />}>
               <Route path="/demand-management" element={<ModuleDashboardPage moduleId="demand-management" />} />
             </Route>
-            <Route element={<ProtectedRoute allowedRoles={getModuleRoles('search')} />}>
-              <Route path="/search" element={<SearchDiscoveryPage />} />
+            <Route element={<ProtectedRoute allowedRoles={getModuleRoles('intelligence')} />}>
+              <Route path="/intelligence" element={<ModuleDashboardPage moduleId="intelligence" />} />
             </Route>
+            {[
+              { path: '/search', element: <SearchDiscoveryPage /> },
+              { path: '/intelligence/dashboard', element: <IntelligenceDashboardPage /> },
+              { path: '/intelligence/analytics', element: <IntelligenceAnalyticsPage /> },
+              { path: '/intelligence/matching', element: <DemandMatchingPage /> },
+              { path: '/intelligence/applicants', element: <ExternalApplicantsPage /> },
+              { path: '/intelligence/costs', element: <SearchCostsPage /> }
+            ].map(({ path, element }) => (
+              <Route key={path} element={<ProtectedRoute allowedRoles={getNavigationRoles(path)} />}>
+                <Route path={path} element={element} />
+              </Route>
+            ))}
             <Route element={<ProtectedRoute allowedRoles={getModuleRoles('administration')} />}>
               <Route path="/administration" element={<ModuleDashboardPage moduleId="administration" />} />
             </Route>

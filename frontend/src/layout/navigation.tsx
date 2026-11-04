@@ -19,13 +19,17 @@ import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined';
 import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import TravelExploreOutlinedIcon from '@mui/icons-material/TravelExploreOutlined';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
+import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined';
+import HowToRegOutlinedIcon from '@mui/icons-material/HowToRegOutlined';
+import PaidOutlinedIcon from '@mui/icons-material/PaidOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import WorkOutlineOutlinedIcon from '@mui/icons-material/WorkOutlineOutlined';
 import type { ReactElement } from 'react';
 import { MEETING_PARTICIPANT_ROLES } from '../features/demand/meetingOptions';
 import { UserRole } from '../types/enums';
 
-export type NavigationModuleId = 'skill-matrix' | 'workforce' | 'demand-management' | 'search' | 'administration';
+export type NavigationModuleId = 'skill-matrix' | 'workforce' | 'demand-management' | 'intelligence' | 'administration';
 
 export interface NavigationItem {
   label: string;
@@ -60,6 +64,9 @@ const WORKFORCE_ROLES = [
   UserRole.HR_BUSINESS_PARTNER
 ];
 export const SEARCH_ROLES = WORKFORCE_ROLES;
+const INSIGHT_ROLES = [...WORKFORCE_ROLES, UserRole.MANAGEMENT];
+const MATCHING_ROLES = [UserRole.ADMIN, UserRole.PMO, UserRole.HR_BUSINESS_PARTNER];
+const COST_ROLES = [UserRole.ADMIN, UserRole.PMO, UserRole.MANAGEMENT];
 
 export const navigationModules: NavigationModule[] = [
   {
@@ -177,19 +184,53 @@ export const navigationModules: NavigationModule[] = [
     ]
   },
   {
-    id: 'search',
-    label: 'Search & Discovery',
-    path: '/search',
+    id: 'intelligence',
+    label: 'Workforce Intelligence',
+    path: '/intelligence',
     icon: <TravelExploreOutlinedIcon />,
-    description: 'Find people by skills, experience and availability.',
+    description: 'Discovery, analytics, demand matching, recruiting figures and search costs.',
     items: [
       {
-        label: 'Find people',
+        label: 'Discovery',
         path: '/search',
-        description: 'Natural-language and filter search with ranked results',
+        description: 'Structured, quick and AI search for internal employees',
         icon: <TravelExploreOutlinedIcon />,
-        roles: SEARCH_ROLES,
-        inSidebar: false
+        roles: SEARCH_ROLES
+      },
+      {
+        label: 'Dashboard',
+        path: '/intelligence/dashboard',
+        description: 'Key workforce figures and charts',
+        icon: <InsightsOutlinedIcon />,
+        roles: INSIGHT_ROLES
+      },
+      {
+        label: 'Experience analytics',
+        path: '/intelligence/analytics',
+        description: 'Project tenure and skill experience',
+        icon: <TimelineOutlinedIcon />,
+        roles: INSIGHT_ROLES
+      },
+      {
+        label: 'Demand matching',
+        path: '/intelligence/matching',
+        description: 'Rank employees against must-have and optional criteria',
+        icon: <RuleOutlinedIcon />,
+        roles: MATCHING_ROLES
+      },
+      {
+        label: 'External applicants',
+        path: '/intelligence/applicants',
+        description: 'Recruiting figures, names only',
+        icon: <HowToRegOutlinedIcon />,
+        roles: MATCHING_ROLES
+      },
+      {
+        label: 'Usage & costs',
+        path: '/intelligence/costs',
+        description: 'Conventional vs AI search cost',
+        icon: <PaidOutlinedIcon />,
+        roles: COST_ROLES
       }
     ]
   },

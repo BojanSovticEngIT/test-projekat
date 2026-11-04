@@ -1,6 +1,6 @@
 import { setupWorker } from 'msw/browser';
 import { demandHandlers } from './demandHandlers';
-import { searchHandlers } from './searchHandlers';
+import { intelligenceHandlers } from './intelligenceHandlers';
 
 // Only endpoints the backend does not serve yet; everything else reaches the real API.
 export const startMockWorker = async (options: {
@@ -9,7 +9,7 @@ export const startMockWorker = async (options: {
 }): Promise<void> => {
   const worker = setupWorker(
     ...(options.demand ? demandHandlers : []),
-    ...(options.search ? searchHandlers : [])
+    ...(options.search ? intelligenceHandlers : [])
   );
   await worker.start({
     onUnhandledRequest: 'bypass',

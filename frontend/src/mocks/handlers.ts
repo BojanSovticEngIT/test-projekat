@@ -26,7 +26,7 @@ import type { ImportJob } from '../types/import.types';
 import type { AuditLogEntry, AuditActionEnum } from '../types/audit.types';
 import { workforceHandlers } from './workforceHandlers';
 import { demandHandlers, resetDemandMockData } from './demandHandlers';
-import { searchHandlers } from './searchHandlers';
+import { intelligenceHandlers } from './intelligenceHandlers';
 import {
   buildCertificationHandlers,
   resetCertificationMockData,
@@ -1247,5 +1247,5 @@ export const handlers = [
   ),
   ...workforceHandlers,
   ...demandHandlers,
-  ...searchHandlers,
+  ...intelligenceHandlers,
 ];
