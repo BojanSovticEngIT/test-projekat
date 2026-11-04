@@ -1,0 +1,2 @@
+employee_number,email,organization_unit,contract_fte,status
+EMP001,employee.one@example.com,Engineering,1.00,ACTIVE

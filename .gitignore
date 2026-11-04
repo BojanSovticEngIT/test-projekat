@@ -1,0 +1,66 @@
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse / VS Code / Cursor (local IDE settings)
+.classpath
+.project
+.settings/
+.vscode/
+.cursor/
+
+# Maven / Java
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+hs_err_pid*
+replay_pid*
+
+# Spring Boot
+*.jar
+*.war
+*.ear
+
+# Logs & local runtime
+*.log
+logs/
+tmp/
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+*~
+
+# Environment / secrets
+*.env
+.env.*
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+.npm/
+.npmrc
+*.tsbuildinfo
+.vite/
+coverage/
+*.lcov
+
+# Vitest
+vitest.config.ts.timestamp-*
+
+# Playwright E2E (generated on every browser test run)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+.playwright/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+e2e/playwright/.cache/

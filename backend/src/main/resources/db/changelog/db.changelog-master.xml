@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <include file="db/changelog/001-create-schema.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/002-seed-data.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/003-knowledge-level-table.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/004-fix-seed-passwords.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/005-fix-seed-passwords-v2.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/006-remove-review-cycles.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/007-test-seed-data.sql"      relativeToChangelogFile="false"/>
+    <include file="db/changelog/008-fix-test-seed-passwords.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/009-seed-skill-tags.sql"           relativeToChangelogFile="false"/>
+    <include file="db/changelog/010-ensure-base-seed-employees.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/011-m2-foundation.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/012-m2-org-project.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/012-m2-org-structure-seed.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/013-m2-allocation.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/014-m2-engagement-skill.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/015-m2-workforce-profile.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/016-m2-governance-notify.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/017-m2-audit-actions.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/018-m3-demand.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/019-m3-candidates.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/020-m3-demand-enhancements.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/020-m2-vertical-taxonomy-tree.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/021-m2-node-leader.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/021-m2-project-manager-name.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/022-m2-project-client-optional.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/023-m2-project-drop-country.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/020-m3-employee-certificates.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/021-remove-needs-clarification.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/022-employee-skill-revisions.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/023-skill-deletion-requests.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/024-deletion-request-reason.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/025-validation-item-employee-comment.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/026-validation-request-notifications.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/027-reopened-for-edit-status.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/028-certificate-link.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/029-certificate-expiration-date.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/030-employee-cost-code.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/031-employee-horizontal-unit.sql" relativeToChangelogFile="false"/>
+
+</databaseChangeLog>

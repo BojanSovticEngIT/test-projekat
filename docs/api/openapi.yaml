@@ -1,0 +1,2991 @@
+openapi: 3.0.3
+info:
+  title: Skill Matrix API
+  description: |
+    REST API for the Skill Matrix & Competency Management System.
+
+    **Base URL:** `http://localhost:8080`
+    **Auth:** Bearer JWT — obtain via `POST /api/auth/login`, attach as `Authorization: Bearer <token>`
+    **MVP demo users:** admin / employee / manager / hr (all password: `password`)
+
+    **Spec refs:** `docs/spec/slices/`
+  version: 1.0.0
+  contact:
+    name: DevExpPlatform
+    url: https://github.com/DevExpPlatform/project-am-ns-skill-matrix
+
+servers:
+  - url: http://localhost:8080/wms/skillmatrix
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Login, current user, logout
+  - name: Employees
+    description: Employee CRUD and scoped access
+  - name: Me
+    description: Current user self-service (profile, skills, certifications)
+  - name: Skills
+    description: Skill catalog (all roles read, ADMIN write)
+  - name: Skill Categories
+    description: Skill category management (ADMIN only write)
+  - name: Employee Skills
+    description: Employee skill records — admin/manager access by employee ID
+  - name: Validation Requests
+    description: Skill validation workflow (manager approve/reject/clarify)
+  - name: Certifications
+    description: >
+      Own PDF-backed certificates under /api/me/certifications (implemented). The catalog /
+      claim / approval endpoints below are the earlier design and are not implemented.
+  - name: Dashboard
+    description: Role-scoped metrics and chart data
+  - name: Import
+    description: Two-phase Excel import (ADMIN only)
+  - name: Export
+    description: Excel export (role-scoped)
+  - name: Audit Log
+    description: Audit trail — role-scoped access
+  - name: Workforce
+    description: Module 02 — allocations, bench, governance, import (see m2-api-scope.md)
+
+security:
+  - bearerAuth: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and obtain JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: admin
+              password: password
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (invalidate session / audit LOGIN event)
+      responses:
+        '204':
+          description: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Employees ─────────────────────────────────────────────────────────────
+
+  /api/employees:
+    get:
+      tags: [Employees]
+      summary: List employees (role-scoped)
+      description: |
+        - ADMIN/HR: all employees
+        - LINE_MANAGER: direct reports only
+        - EMPLOYEE: not permitted (use `/api/me/employee-profile`)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Name or email search
+        - name: managerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: horizontalNodeId
+          in: query
+          description: >
+            Horizontal node (any level). Matches employees whose derived organization unit is this node or one of
+            its descendants.
+          schema:
+            type: string
+            format: uuid
+        - name: location
+          in: query
+          schema:
+            type: string
+        - name: employmentStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/EmploymentStatus'
+        - name: workforceType
+          in: query
+          schema:
+            type: string
+            enum: [EMPLOYEE, B2B, SUPPLIER]
+          description: Filter by workforce type
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter employees who have this skill
+        - name: skillLevelMin
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+          description: Minimum knowledge level for the skill filter
+        - name: validationStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/ValidationStatus'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated employee list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedEmployees'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Employees]
+      summary: Create a new employee (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeRequest'
+      responses:
+        '201':
+          description: Employee created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/employees/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Employees]
+      summary: Get employee by ID
+      responses:
+        '200':
+          description: Employee detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Employees]
+      summary: Update employee (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeRequest'
+      responses:
+        '200':
+          description: Updated employee
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employees/{id}/skills:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Employees]
+      summary: Get skills for a specific employee
+      description: ADMIN/HR/LINE_MANAGER (direct reports only)
+      responses:
+        '200':
+          description: List of employee skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeSkillResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Employees]
+      summary: Add a skill to an employee (ADMIN/Manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeSkillRequest'
+      responses:
+        '201':
+          description: Skill added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Me (Self-service) ─────────────────────────────────────────────────────
+
+  /api/me/employee-profile:
+    get:
+      tags: [Me]
+      summary: Get own employee profile
+      responses:
+        '200':
+          description: Current user's employee record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/me/skills:
+    get:
+      tags: [Me]
+      summary: Get own skill profile
+      responses:
+        '200':
+          description: List of own employee skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeSkillResponse'
+
+    post:
+      tags: [Me]
+      summary: Add a skill to own profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeSkillRequest'
+      responses:
+        '201':
+          description: Skill added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/me/skills/{employeeSkillId}:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Me]
+      summary: Update own skill (any status except SUBMITTED / open deletion request)
+      description: |
+        Saves immediately. Only self-assessed level, years of experience, last-used date and employee comment
+        change; manager-validated data is kept. A no-op writes no revision/audit entry. A real change to a
+        `VALIDATED` skill moves it to `REOPENED_FOR_EDIT` (the latest validated revision stays restorable via
+        `restore-latest-validated`); other statuses are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeSkillRequest'
+      responses:
+        '200':
+          description: Updated skill
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill is SUBMITTED or has an open validation/deletion request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags: [Me]
+      summary: Delete own DRAFT skill directly
+      description: |
+        Allowed only for the owner's skill in `DRAFT` status with no open request (never validated). The final
+        revision and a `DELETE` audit entry are written before the live row is removed, in one transaction.
+        Every other status must use `POST /api/me/skills/{employeeSkillId}/request-deletion`.
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill is not DRAFT (e.g. VALIDATED, REJECTED, ARCHIVED, SUBMITTED) or has an open request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/me/skills/{employeeSkillId}/request-deletion:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Me]
+      summary: Request deletion of own non-DRAFT skill (routed to the employee's manager)
+      description: |
+        A non-empty `reason` is mandatory. `DRAFT` skills are deleted directly (`DELETE`), never requested.
+        Creates a `DELETION` validation request with one `SUBMITTED` item. The skill is not changed but is locked
+        (no edit/restore/submit/duplicate request) until the manager decides the item via the existing
+        item-level approve/reject endpoints. Approval physically deletes the live skill in the same transaction;
+        its final revision, audit entries and the request/decision record are kept. Rejection leaves the skill
+        unchanged and editable. The requester can withdraw an undecided request with
+        `POST /api/validation-requests/{id}/revoke` (only the request is cancelled; the skill is untouched).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  description: Trimmed; blank values are rejected.
+      responses:
+        '201':
+          description: Deletion request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill is DRAFT or SUBMITTED, already has an open request, or the employee has no manager
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/me/skills/{employeeSkillId}/latest-validated-revision:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Me]
+      summary: Latest VALIDATED revision of an own skill
+      description: |
+        Returns the revision with the highest `version` whose status is `VALIDATED`.
+        404 when the skill has never been validated (no fallback to the live row).
+      responses:
+        '200':
+          description: Latest validated revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillRevisionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/me/skills/certificate-counts:
+    get:
+      tags: [Me]
+      summary: Number of certificates linked to each own skill
+      description: >
+        Map of `employeeSkillId` to the number of the user's certificates linked to that skill's catalog
+        skill. Skills without certificates are omitted.
+      responses:
+        '200':
+          description: Counts keyed by employee skill id
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: integer, format: int64 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me/skills/{employeeSkillId}/certifications:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Me]
+      summary: Own certificates linked to an own skill
+      description: Newest first. A skill that is not the caller's returns `404`.
+      responses:
+        '200':
+          description: Certificates linked to the skill
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/me/skills/{employeeSkillId}/history:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Me]
+      summary: Revision history of an own skill
+      description: |
+        Returns every revision of the skill ordered by `version` ascending (oldest first). Read-only;
+        a revision is appended on each change, submission, decision or restore.
+      responses:
+        '200':
+          description: Revisions of the skill
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeSkillRevisionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/me/skills/{employeeSkillId}/restore-latest-validated:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Me]
+      summary: Restore own skill from its latest VALIDATED revision (any non-locked status)
+      description: |
+        No request body: the source is always the latest validated revision. The live row keeps its id;
+        a new revision and an `UPDATE` audit entry ("Restored latest validated revision vN") are written.
+        No-op (200, no history/audit) when the live state already matches. A `REOPENED_FOR_EDIT` skill returns to
+        `VALIDATED` (the revision's status); no validation request or notification is created.
+      responses:
+        '200':
+          description: Restored skill
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill is locked by a submitted validation request or the state cannot be restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/me/validation-requests:
+    get:
+      tags: [Me]
+      summary: List validation requests submitted by the current user
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ValidationRequestStatus'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Own validation requests (with items)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedValidationRequests'
+
+  /api/me/skills/submit-validation:
+    post:
+      tags: [Me]
+      summary: Submit skills for manager validation
+      description: Creates a ValidationRequest and sets selected skills to SUBMITTED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeSkillIds]
+              properties:
+                employeeSkillIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 1
+            example:
+              employeeSkillIds:
+                - 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                - 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+      responses:
+        '201':
+          description: Validation request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # Own, PDF-backed certificates. Supersedes the earlier claim/approval design
+  # (EmployeeCertification*, /submit); see docs/spec/slices/06-certifications.md.
+  # Every operation is scoped to the authenticated user's own certificates; an id that
+  # belongs to another user is indistinguishable from an unknown id (404).
+  /api/me/certifications:
+    get:
+      tags: [Certifications]
+      summary: List own certificates (newest first)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of the current user's certificates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCertificates'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Certifications]
+      summary: Create an own certificate with a PDF, a link, or both
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateRequest'
+      responses:
+        '201':
+          description: Certificate created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+
+  /api/me/certifications/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Certifications]
+      summary: Get one own certificate
+      responses:
+        '200':
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Certifications]
+      summary: Update own certificate (metadata, skills, optional PDF replacement)
+      description: >
+        Name, completionDate and skillIds are replaced with the submitted values
+        (omitting skillIds clears the associations). When `file` is omitted the stored
+        PDF is kept unchanged; when present it replaces the stored PDF atomically.
+        `link` is replaced with the submitted value (blank removes it).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CertificateUpdateRequest'
+      responses:
+        '200':
+          description: Updated certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+    delete:
+      tags: [Certifications]
+      summary: Delete own certificate and its stored PDF
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/me/certifications/{id}/document:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Certifications]
+      summary: Download the certificate PDF (404 for link-only certificates)
+      description: >
+        Returns the PDF as an attachment with `Content-Type: application/pdf`,
+        `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and
+        `Cache-Control: no-store`. There is no separate inline-view endpoint; the frontend fetches the
+        PDF with the JWT and opens it from a blob URL in a new tab to view it.
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Read-only view of an employee's certificates for the employee detail page. Visibility is
+  # exactly that of GET /api/employees/{id} (ADMIN/PMO/HR org-wide, LINE_MANAGER direct
+  # reports, HR_BUSINESS_PARTNER own org units; EMPLOYEE uses /api/me/certifications).
+  # No create/update/delete exists on this route.
+  /api/employees/{employeeId}/certifications:
+    parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Certifications]
+      summary: List an employee's certificates (newest first, read-only)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated certificate metadata (no document bytes)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCertificates'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employees/{employeeId}/certifications/{id}/document:
+    parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Certifications]
+      summary: Download an employee's certificate PDF
+      description: >
+        Same authorization and response headers as the list endpoint and
+        `/api/me/certifications/{id}/document`. A certificate id that does not belong to
+        `employeeId` returns 404.
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/certifications/requests/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Certifications]
+      summary: Approve a submitted employee certification (ADMIN/Manager)
+      description: Moves status from SUBMITTED → VALIDATED. Sets approved_by and approved_at.
+      responses:
+        '200':
+          description: Certification approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeCertificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/certifications/requests/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Certifications]
+      summary: Reject a submitted employee certification (ADMIN/Manager)
+      description: Moves status from SUBMITTED → REJECTED.
+      responses:
+        '200':
+          description: Certification rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeCertificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employee-skills/{employeeSkillId}:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Employee Skills]
+      summary: Update employee skill (ADMIN/Manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeSkillRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [Employee Skills]
+      summary: Delete employee skill (ADMIN/Manager)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/employee-skills/{employeeSkillId}/certifications:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Employee Skills]
+      summary: Certificates the employee linked to the skill under review (ADMIN/HR/LINE_MANAGER direct reports)
+      description: >
+        Only certificates linked to the same catalog skill are returned, newest first, so a reviewer sees the
+        evidence for the skill being decided and nothing else.
+      responses:
+        '200':
+          description: Certificates linked to the skill
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employee-skills/{employeeSkillId}/certifications/{id}/document:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Employee Skills]
+      summary: Download the PDF of a certificate linked to the skill under review
+      description: A certificate that is not linked to that skill returns `404`. Same headers as the own download.
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employee-skills/{employeeSkillId}/history:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Employee Skills]
+      summary: Revision history of an employee skill (ADMIN/HR/LINE_MANAGER direct reports)
+      description: Every revision ordered by `version` ascending (oldest first). Read-only.
+      responses:
+        '200':
+          description: Revisions of the skill
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeSkillRevisionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employee-skills/{employeeSkillId}/latest-validated-revision:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Employee Skills]
+      summary: Latest VALIDATED revision of an employee skill (ADMIN/HR/LINE_MANAGER direct reports)
+      responses:
+        '200':
+          description: Latest validated revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillRevisionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/employee-skills/{employeeSkillId}/restore-latest-validated:
+    parameters:
+      - name: employeeSkillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Employee Skills]
+      summary: Restore an employee skill from its latest VALIDATED revision (ADMIN/LINE_MANAGER direct reports)
+      responses:
+        '200':
+          description: Restored skill
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeSkillResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill is locked by a submitted validation request or the state cannot be restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  # ── Skill Categories ──────────────────────────────────────────────────────
+
+  /api/skill-categories:
+    get:
+      tags: [Skill Categories]
+      summary: List all active skill categories
+      responses:
+        '200':
+          description: Skill category list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkillCategoryResponse'
+
+    post:
+      tags: [Skill Categories]
+      summary: Create skill category (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillCategoryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillCategoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/skill-categories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    put:
+      tags: [Skill Categories]
+      summary: Update skill category (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillCategoryRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillCategoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Skill Categories]
+      summary: Deactivate skill category (ADMIN only — soft delete)
+      description: Sets `active = false`. Blocked if any active skills exist in the category.
+      responses:
+        '204':
+          description: Deactivated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Category has active skills — cannot deactivate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  # ── Skills ────────────────────────────────────────────────────────────────
+
+  /api/skills:
+    get:
+      tags: [Skills]
+      summary: List skills (all roles)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SkillStatus'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated skill list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSkills'
+
+    post:
+      tags: [Skills]
+      summary: Create skill (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/skills/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Skills]
+      summary: Get skill by ID
+      responses:
+        '200':
+          description: Skill detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Skills]
+      summary: Update skill (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Skills]
+      summary: Soft-delete skill (ADMIN only)
+      description: |
+        Sets status to `INACTIVE` if not in use, or `DEPRECATED` if referenced by any employee skill.
+        Physical delete is NOT performed.
+      responses:
+        '200':
+          description: Skill deactivated (returns updated skill with new status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Validation Requests ───────────────────────────────────────────────────
+
+  /api/validation-requests:
+    get:
+      tags: [Validation Requests]
+      summary: List validation requests (LINE_MANAGER/ADMIN)
+      description: LINE_MANAGER sees only direct reports' requests.
+      parameters:
+        - name: employeeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: managerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ValidationRequestStatus'
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedValidationRequests'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/validation-requests/skills:
+    get:
+      tags: [Validation Requests]
+      summary: List the latest validation outcome per employee skill (LINE_MANAGER/HR/ADMIN)
+      description: |
+        One row per employee skill: the latest non-revoked validation request item, newest submission first.
+        LINE_MANAGER sees only direct reports. `search` is a case-insensitive match on the employee's first name,
+        last name, full name or the skill name; `category` matches the category name case-insensitively.
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: managerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Status of the latest item.
+          schema:
+            $ref: '#/components/schemas/ValidationRequestStatus'
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedValidationSkillReviews'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/validation-requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Validation Requests]
+      summary: Get validation request detail
+      responses:
+        '200':
+          description: Validation request with items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestDetailResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/validation-requests/{id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Validation Requests]
+      summary: Revoke a submitted validation request (requester only)
+      description: |
+        Allowed only for the requester while the request is `SUBMITTED` and no item has been decided.
+        The request and its items become `CANCELLED`; every skill is restored to its pre-submission
+        revision (new revision + audit entry per skill) in one transaction. A `DELETION` request never changed
+        its skill, so revoking it only cancels the request.
+      responses:
+        '200':
+          description: Cancelled request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestDetailResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: A decision was already made, request is not SUBMITTED, or a skill cannot be restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/validation-requests/{id}/items/{itemId}/approve:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Validation Requests]
+      summary: Approve a validation request item (LINE_MANAGER/ADMIN)
+      description: |
+        `managerValidatedLevel` is **required** for `VALIDATION` requests. For `DELETION` requests the body is
+        optional, no level is used, and approval physically deletes the employee skill (history/audit are kept).
+        Only `SUBMITTED` items can be decided. Manager can only approve items belonging to their direct reports.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveItemRequest'
+      responses:
+        '200':
+          description: Item approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestItemResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/validation-requests/{id}/items/{itemId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Validation Requests]
+      summary: Reject a validation request item (LINE_MANAGER/ADMIN)
+      description: '`managerComment` is **required**.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentOnlyRequest'
+      responses:
+        '200':
+          description: Item rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequestItemResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/certifications:
+    get:
+      tags: [Certifications]
+      summary: List certification catalog (all roles)
+      responses:
+        '200':
+          description: Certification list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificationResponse'
+
+    post:
+      tags: [Certifications]
+      summary: Create certification in catalog (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificationRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/certifications/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Certifications]
+      summary: Get certification by ID
+      responses:
+        '200':
+          description: Certification detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Certifications]
+      summary: Update certification (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificationRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificationResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [Certifications]
+      summary: Deactivate certification in catalog (ADMIN only — soft delete)
+      responses:
+        '204':
+          description: Deactivated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+
+  /api/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Get key metrics summary (role-scoped)
+      responses:
+        '200':
+          description: Dashboard summary metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+              example:
+                totalEmployees: 42
+                totalActiveEmployees: 40
+                totalSkills: 24
+                totalActiveSkills: 22
+                totalEmployeeSkills: 320
+                validatedSkills: 180
+                submittedSkills: 45
+                rejectedSkills: 10
+
+  /api/dashboard/skills-by-category:
+    get:
+      tags: [Dashboard]
+      summary: Employee skills grouped by category (role-scoped)
+      responses:
+        '200':
+          description: Skills by category
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryCount'
+              example:
+                - category: Technical
+                  count: 210
+                - category: Soft Skills
+                  count: 88
+
+  /api/dashboard/validation-status:
+    get:
+      tags: [Dashboard]
+      summary: Validation status distribution (role-scoped)
+      responses:
+        '200':
+          description: Status distribution
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusCount'
+
+  /api/dashboard/top-skills:
+    get:
+      tags: [Dashboard]
+      summary: Top 10 most common skills (role-scoped)
+      responses:
+        '200':
+          description: Top skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkillCount'
+              example:
+                - skillName: Java
+                  count: 35
+                - skillName: Spring Boot
+                  count: 30
+
+  /api/dashboard/team-coverage:
+    get:
+      tags: [Dashboard]
+      summary: Validated skill count by org unit (role-scoped)
+      responses:
+        '200':
+          description: Team coverage by org unit
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrgUnitCount'
+
+  # ── Import ────────────────────────────────────────────────────────────────
+
+  /api/import/skill-matrix/validate:
+    post:
+      tags: [Import]
+      summary: Phase 1 — Validate Excel file (ADMIN only)
+      description: |
+        Parse the uploaded `.xlsx` file and validate all rows.
+        No data is persisted. Returns an `importJobId` and per-row error/warning list.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Excel file (.xlsx only)
+      responses:
+        '200':
+          description: Validation complete (check errors array for issues)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/import/skill-matrix/confirm/{importJobId}:
+    parameters:
+      - name: importJobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Import]
+      summary: Phase 2 — Confirm and persist import (ADMIN only)
+      description: |
+        Persists all valid rows from the previously validated job in a single transaction.
+        Rows with critical errors are skipped.
+      responses:
+        '200':
+          description: Import confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/import/jobs:
+    get:
+      tags: [Import]
+      summary: List import job history (ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated import job history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedImportJobs'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/import/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Import]
+      summary: Get import job detail with full validation result (ADMIN only)
+      responses:
+        '200':
+          description: Import job detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Export ────────────────────────────────────────────────────────────────
+
+  /api/export/skill-matrix.xlsx:
+    get:
+      tags: [Export]
+      summary: Export full skill matrix as Excel (role-scoped)
+      description: |
+        Columns: Employee ID, First/Last Name, Email, Manager Email, Org Unit,
+        Job Title, Job Profile, Location, Skill Category, Skill Name,
+        Self Assessment Level, Manager Validated Level, Years of Experience,
+        Last Used Date, Validation Status, Employee Comment, Manager Comment,
+        Last Updated Date, Last Validated Date.
+
+        Scope: ADMIN/HR=all, LINE_MANAGER=direct reports, EMPLOYEE=own data.
+      responses:
+        '200':
+          description: Excel file stream
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=skill-matrix.xlsx
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/export/employees.xlsx:
+    get:
+      tags: [Export]
+      summary: Export employee list as Excel (ADMIN/HR)
+      responses:
+        '200':
+          description: Excel file stream
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/export/validation-status.xlsx:
+    get:
+      tags: [Export]
+      summary: Export validation status report as Excel (role-scoped)
+      responses:
+        '200':
+          description: Excel file stream
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Audit Log ─────────────────────────────────────────────────────────────
+
+  /api/audit-logs:
+    get:
+      tags: [Audit Log]
+      summary: List audit log entries (role-scoped)
+      description: |
+        - ADMIN: all entries
+        - HR: all entries (read-only)
+        - LINE_MANAGER: team entries only
+        - EMPLOYEE: own entries only
+      parameters:
+        - name: entityName
+          in: query
+          schema:
+            type: string
+          description: e.g. "EmployeeSkill", "ValidationRequest"
+        - name: entityId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: changedByEmail
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedAuditLogs'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/audit-logs/entity/{entityName}/{entityId}:
+    parameters:
+      - name: entityName
+        in: path
+        required: true
+        schema:
+          type: string
+        example: EmployeeSkill
+      - name: entityId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Audit Log]
+      summary: Get audit history for a specific entity record
+      responses:
+        '200':
+          description: Audit entries for the entity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Module 02 Workforce (summary) ─────────────────────────────────────────
+  # Full RBAC matrix: docs/tasks/module-02/m2-api-scope.md
+
+  /api/allocations:
+    get:
+      tags: [Workforce]
+      summary: List allocations (scoped by role)
+      parameters:
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: projectId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Allocation list
+    post:
+      tags: [Workforce]
+      summary: Create allocation (PMO, Admin, LM direct reports)
+      responses:
+        '201': { description: Created }
+        '400': { description: Validation or conflict }
+        '403': { description: Forbidden }
+
+  /api/workforce/bench:
+    get:
+      tags: [Workforce]
+      summary: Bench dashboard entries
+      parameters:
+        - name: horizon
+          in: query
+          schema: { type: integer, enum: [0, 15, 30] }
+      responses:
+        '200': { description: Bench list }
+
+  /api/workforce/availability:
+    get:
+      tags: [Workforce]
+      summary: Availability search
+      parameters:
+        - name: horizontalNodeId
+          in: query
+          description: Horizontal node; includes employees whose derived unit is in its subtree.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200': { description: Availability list }
+
+  /api/workflows:
+    get:
+      tags: [Workforce]
+      summary: Governance workflow inbox
+      responses:
+        '200': { description: Workflow list }
+    post:
+      tags: [Workforce]
+      summary: Submit workflow (Line Manager)
+      responses:
+        '201': { description: Created }
+
+  /api/notifications:
+    get:
+      tags: [Workforce]
+      summary: Current user's in-app notifications (own only, newest first)
+      description: >
+        Includes REQUEST_SUBMITTED notifications for the responsible line manager (validation or skill-deletion
+        request submitted) and ITEM_APPROVED / ITEM_REJECTED notifications for the employee.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        '200':
+          description: Page of notifications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      content:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+
+  /api/import/workforce/mapping:
+    post:
+      tags: [Workforce]
+      summary: Workforce Excel import — column mapping step
+      responses:
+        '200': { description: Mapping result }
+
+  /api/integration/workday/sync:
+    post:
+      tags: [Workforce]
+      summary: Workday CSV sync (dry-run or commit)
+      responses:
+        '200': { description: Sync result }
+
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    SizeParam:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Insufficient role/permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    PayloadTooLarge:
+      description: Uploaded file exceeds the 30 MB limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Duplicate resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+
+    # ── Enums ────────────────────────────────────────────────────────────────
+
+    UserRole:
+      type: string
+      enum: [ADMIN, EMPLOYEE, LINE_MANAGER, HR]
+
+    EmploymentStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE, NEW_HIRE, PENDING_VALIDATION]
+
+    SkillStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE, DEPRECATED]
+
+    ValidationStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, VALIDATED, REJECTED, REOPENED_FOR_EDIT, ARCHIVED]
+
+    ValidationRequestStatus:
+      type: string
+      enum: [SUBMITTED, APPROVED, REJECTED, CANCELLED]
+
+    CertificationStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, VALIDATED, REJECTED]
+
+    AuditAction:
+      type: string
+      enum: [CREATE, UPDATE, DELETE, SUBMIT, APPROVE, REJECT, REQUEST_CLARIFICATION, IMPORT, EXPORT, LOGIN]
+
+    KnowledgeLevel:
+      type: integer
+      minimum: 1
+      maximum: 5
+      description: |
+        1 = BEGINNER, 2 = INTERMEDIATE, 3 = EXPERIENCED, 4 = ADVANCED, 5 = MASTER
+
+    # ── Auth ─────────────────────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: admin
+        password:
+          type: string
+          example: password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT bearer token (store in memory only)
+        user:
+          $ref: '#/components/schemas/UserInfo'
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        employeeId:
+          type: string
+          format: uuid
+          nullable: true
+
+    # ── Employee ──────────────────────────────────────────────────────────────
+
+    EmployeeRequest:
+      type: object
+      required: [firstName, lastName, email, location]
+          type: string
+          description: Optional on create (generated when omitted).
+          example: EMP001
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        jobTitle:
+          type: string
+        jobProfile:
+          type: string
+        location:
+          type: string
+          description: Required. One of the countries from GET /api/countries (case-insensitive; "Brasil" is accepted as Brazil).
+        managerId:
+          type: string
+          format: uuid
+          nullable: true
+        employmentStatus:
+          $ref: '#/components/schemas/EmploymentStatus'
+        costCode:
+          $ref: '#/components/schemas/CostCode'
+
+    EmployeeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        jobTitle:
+          type: string
+        jobProfile:
+          type: string
+        organizationUnit:
+          type: string
+          nullable: true
+          readOnly: true
+          description: >
+            Read-only. Full path ("N1 / N2 / N3") of the horizontal node of the project of the employee's latest
+            allocation that started on or before today; null when there is none.
+        location:
+          type: string
+        managerId:
+          type: string
+          format: uuid
+          nullable: true
+        managerName:
+          type: string
+          nullable: true
+        employmentStatus:
+          $ref: '#/components/schemas/EmploymentStatus'
+        costCode:
+          allOf:
+            - $ref: '#/components/schemas/CostCode'
+          nullable: true
+          description: Returned to ADMIN and HR only (null for other roles).
+        seniority:
+          type: string
+          nullable: true
+          enum: [JUNIOR, MEDIOR, SENIOR, LEAD, PRINCIPAL]
+          description: Derived from costCode (R1=JUNIOR, R2=MEDIOR, R3=SENIOR, R4/R5=LEAD, R6=PRINCIPAL). ADMIN and HR only.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CostCode:
+      type: string
+      enum: [R1, R2, R3, R4, R5, R6]
+      nullable: true
+      description: Predefined cost (range) code; a higher number means a higher cost. Writable by ADMIN only.
+
+    PagedEmployees:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/EmployeeResponse'
+
+    # ── Skill Category ────────────────────────────────────────────────────────
+
+    SkillCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    SkillCategoryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        active:
+          type: boolean
+        skillCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Skill ─────────────────────────────────────────────────────────────────
+
+    SkillRequest:
+      type: object
+      required: [name, categoryId]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+
+    SkillResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+        categoryName:
+          type: string
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PagedSkills:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/SkillResponse'
+
+    # ── Employee Skill ────────────────────────────────────────────────────────
+
+    EmployeeSkillRequest:
+      type: object
+      required: [skillId, selfAssessedLevel]
+      properties:
+        skillId:
+          type: string
+          format: uuid
+        selfAssessedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+        yearsOfExperience:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        lastUsedDate:
+          type: string
+          format: date
+          description: Cannot be a future date
+          nullable: true
+        employeeComment:
+          type: string
+          maxLength: 2000
+          nullable: true
+
+    EmployeeSkillResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid
+        skillId:
+          type: string
+          format: uuid
+        skillName:
+          type: string
+        categoryName:
+          type: string
+        selfAssessedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+        managerValidatedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+          nullable: true
+        yearsOfExperience:
+          type: number
+          format: float
+          nullable: true
+        lastUsedDate:
+          type: string
+          format: date
+          nullable: true
+        employeeComment:
+          type: string
+          nullable: true
+        managerComment:
+          type: string
+          nullable: true
+        validationStatus:
+          $ref: '#/components/schemas/ValidationStatus'
+        lastUpdatedDate:
+          type: string
+          format: date-time
+        lastValidatedDate:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    EmployeeSkillRevisionResponse:
+      type: object
+      description: Immutable snapshot of an employee skill; `version` is sequential per employee skill.
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeSkillId:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        selfAssessedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+        selfAssessedLevelCode:
+          type: string
+        managerValidatedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+          nullable: true
+        managerValidatedLevelCode:
+          type: string
+          nullable: true
+        yearsOfExperience:
+          type: number
+          nullable: true
+        lastUsedDate:
+          type: string
+          format: date
+          nullable: true
+        employeeComment:
+          type: string
+          nullable: true
+        managerComment:
+          type: string
+          nullable: true
+        validationStatus:
+          $ref: '#/components/schemas/ValidationStatus'
+        lastUpdatedDate:
+          type: string
+          format: date-time
+        lastValidatedDate:
+          type: string
+          format: date-time
+          nullable: true
+        changedByUserId:
+          type: string
+          format: uuid
+        changedAt:
+          type: string
+          format: date-time
+
+    # ── Validation Request ────────────────────────────────────────────────────
+
+    ValidationRequestResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid
+        employeeName:
+          type: string
+        submittedById:
+          type: string
+          format: uuid
+        reviewedById:
+          type: string
+          format: uuid
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        requestType:
+          type: string
+          enum: [VALIDATION, DELETION]
+          description: Discriminator; not a status.
+        reason:
+          type: string
+          nullable: true
+          description: Employee's reason; mandatory (non-blank) for `DELETION` requests, null otherwise.
+        status:
+          $ref: '#/components/schemas/ValidationRequestStatus'
+        itemCount:
+          type: integer
+
+    ValidationRequestDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ValidationRequestResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationRequestItemResponse'
+
+    ValidationRequestItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeSkillId:
+          type: string
+          format: uuid
+        skillName:
+          type: string
+        categoryName:
+          type: string
+        selfAssessedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+        employeeComment:
+          type: string
+          nullable: true
+          description: Employee's note on the skill, snapshotted at submission; null for legacy items. Visible only to users who may view the request.
+        managerValidatedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+          nullable: true
+        managerComment:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [SUBMITTED, APPROVED, REJECTED, CANCELLED]
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [BENCH_ALERT, WORKFLOW, IDLE_ESCALATION] }
+        title: { type: string }
+        body: { type: string }
+        priority: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        event:
+          type: string
+          nullable: true
+          enum: [REQUEST_SUBMITTED, ITEM_APPROVED, ITEM_REJECTED]
+          description: Set for validation-request notifications (type WORKFLOW)
+        validationRequestId: { type: string, format: uuid, nullable: true }
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        unread: { type: boolean }
+
+    PagedValidationRequests:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationRequestResponse'
+
+    ValidationSkillReview:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: Latest validation request item }
+        requestId: { type: string, format: uuid, description: Request that holds the latest item }
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: string }
+        employeeSkillId: { type: string, format: uuid }
+        skillName: { type: string }
+        categoryName: { type: string }
+        requestType: { type: string, enum: [VALIDATION, DELETION] }
+        status: { $ref: '#/components/schemas/ValidationRequestStatus' }
+        selfAssessedLevel: { type: integer, minimum: 1, maximum: 5 }
+        lastValidatedAt: { type: string, format: date-time, nullable: true }
+        submittedAt: { type: string, format: date-time }
+        historyCount: { type: integer, format: int64, description: Number of recorded revisions of the skill }
+        certificateCount: { type: integer, format: int64, description: Certificates the employee linked to the skill }
+
+    PagedValidationSkillReviews:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationSkillReview'
+
+    ApproveItemRequest:
+      type: object
+      description: '`managerValidatedLevel` is required for VALIDATION requests and ignored for DELETION requests.'
+      properties:
+        managerValidatedLevel:
+          $ref: '#/components/schemas/KnowledgeLevel'
+        managerComment:
+          type: string
+          maxLength: 2000
+          nullable: true
+
+    CommentOnlyRequest:
+      type: object
+      required: [managerComment]
+      properties:
+        managerComment:
+          type: string
+          maxLength: 2000
+          minLength: 1
+
+    # ── Certifications ────────────────────────────────────────────────────────
+
+    CertificationRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        provider:
+          type: string
+        skillIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    CertificationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        provider:
+          type: string
+        active:
+          type: boolean
+        skills:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CertificateCreateRequest:
+      type: object
+      required: [name, completionDate]
+      description: At least one of `file` or `link` is required (both are allowed).
+      properties:
+        file:
+          type: string
+          format: binary
+          description: PDF only (.pdf, application/pdf, %PDF- header), 1 byte to 30 MB
+        link:
+          type: string
+          maxLength: 2048
+          description: Absolute http(s) URL of the certificate. Blank is treated as absent.
+        expirationDate:
+          type: string
+          format: date
+          description: Optional; must not be before completionDate
+        name:
+          type: string
+          maxLength: 255
+        completionDate:
+          type: string
+          format: date
+          description: Must not be in the future
+        skillIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional existing skill ids (repeat the field once per id)
+
+    CertificateUpdateRequest:
+      type: object
+      required: [name, completionDate]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Optional replacement PDF; omit to keep the stored document
+        expirationDate:
+          type: string
+          format: date
+          description: Optional; replaces the stored value (blank or omitted removes it). Must not be before completionDate
+        link:
+          type: string
+          maxLength: 2048
+          description: >
+            Absolute http(s) URL. Replaces the stored link; blank or omitted removes it.
+            The update is rejected when it would leave the certificate with neither a PDF nor a link.
+        name:
+          type: string
+          maxLength: 255
+        completionDate:
+          type: string
+          format: date
+          description: Must not be in the future
+        skillIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    CertificateResponse:
+      type: object
+      required: [id, name, completionDate, skills, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        completionDate:
+          type: string
+          format: date
+        expirationDate:
+          type: string
+          format: date
+          nullable: true
+        documentFileName:
+          type: string
+          nullable: true
+          description: Null when the certificate has no PDF (link only)
+        documentSize:
+          type: integer
+          format: int64
+          nullable: true
+          description: PDF size in bytes; null when there is no PDF
+        link:
+          type: string
+          nullable: true
+          description: Certificate URL; null when none was provided
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateSkill'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CertificateSkill:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    PagedCertificates:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateResponse'
+        page:
+          type: object
+          properties:
+            size:
+              type: integer
+            number:
+              type: integer
+              description: Current page (0-based)
+            totalElements:
+              type: integer
+              format: int64
+            totalPages:
+              type: integer
+
+    EmployeeCertificationRequest:
+      type: object
+      required: [certificationId, issueDate]
+      properties:
+        certificationId:
+          type: string
+          format: uuid
+        issueDate:
+          type: string
+          format: date
+        expirationDate:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    EmployeeCertificationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid
+        certificationId:
+          type: string
+          format: uuid
+        certificationName:
+          type: string
+        provider:
+          type: string
+        issueDate:
+          type: string
+          format: date
+        expirationDate:
+          type: string
+          format: date
+          nullable: true
+        validationStatus:
+          $ref: '#/components/schemas/CertificationStatus'
+        isExpired:
+          type: boolean
+          description: True if expirationDate is in the past
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalEmployees:
+          type: integer
+        totalActiveEmployees:
+          type: integer
+        totalSkills:
+          type: integer
+        totalActiveSkills:
+          type: integer
+        totalEmployeeSkills:
+          type: integer
+        validatedSkills:
+          type: integer
+        submittedSkills:
+          type: integer
+        rejectedSkills:
+          type: integer
+
+    CategoryCount:
+      type: object
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+
+    StatusCount:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/ValidationStatus'
+        count:
+          type: integer
+
+    SkillCount:
+      type: object
+      properties:
+        skillId:
+          type: string
+          format: uuid
+        skillName:
+          type: string
+        count:
+          type: integer
+
+    OrgUnitCount:
+      type: object
+      properties:
+        organizationUnit:
+          type: string
+        validatedSkillCount:
+          type: integer
+
+    # ── Import ────────────────────────────────────────────────────────────────
+
+    ImportJobResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, VALIDATED, CONFIRMED, FAILED]
+        fileName:
+          type: string
+        totalRows:
+          type: integer
+        validRows:
+          type: integer
+        errorRows:
+          type: integer
+        warningRows:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportRowError'
+        createdAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ImportRowError:
+      type: object
+      properties:
+        row:
+          type: integer
+          description: 1-based row number in the Excel file
+        severity:
+          type: string
+          enum: [ERROR, WARNING]
+        field:
+          type: string
+          description: Column name that caused the error
+        message:
+          type: string
+
+    PagedImportJobs:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportJobResponse'
+
+    # ── Audit Log ─────────────────────────────────────────────────────────────
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entityName:
+          type: string
+          example: EmployeeSkill
+        entityId:
+          type: string
+          format: uuid
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        changedById:
+          type: string
+          format: uuid
+        changedByEmail:
+          type: string
+          format: email
+        oldValueJson:
+          type: string
+          description: JSON snapshot of the previous state
+          nullable: true
+        newValueJson:
+          type: string
+          description: JSON snapshot of the new state
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PagedAuditLogs:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditLogEntry'
+
+    # ── Common ────────────────────────────────────────────────────────────────
+
+    PageMeta:
+      type: object
+      properties:
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer
+          description: Current page (0-based)
+        first:
+          type: boolean
+        last:
+          type: boolean
+
+    ApiError:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        fieldErrors:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string

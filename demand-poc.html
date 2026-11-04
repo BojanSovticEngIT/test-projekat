@@ -1,0 +1,1908 @@
+<title>Nearshore Demand Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: navy module sidebar + sticky top bar; list view = filter tabs over a dense table;
+   detail view = main column (candidates with accordion flows) + side column (facts, source, notes, history).
+   Palette follows the existing Skill Matrix app: grey ground, white surfaces, navy rail, magenta-red action colour. */
+:root {
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #F7F8FA;
+  --line: #E1E4EA;
+  --line-strong: #C9CED8;
+  --fg: #121620;
+  --muted: #5C6070;
+  --accent: #C5004B;
+  --accent-hover: #A50040;
+  --accent-soft: #FBE6EF;
+  --on-accent: #FFFFFF;
+  --navy: #002F53;
+  --navy-2: #0B3D66;
+  --navy-fg: #E8EEF4;
+  --navy-muted: #8EA6BC;
+  --ok: #1D7349;
+  --ok-soft: #E2F3E9;
+  --warn: #875800;
+  --warn-soft: #FFF2D2;
+  --bad: #B42318;
+  --bad-soft: #FDE7E4;
+  --info: #1E56A0;
+  --info-soft: #E3EDFB;
+  --neutral: #596173;
+  --neutral-soft: #ECEEF2;
+  --overlay: rgba(9, 20, 36, 0.42);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 12px 40px rgba(9, 20, 36, 0.22);
+  --font: "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D121A; --surface: #151C27; --surface-2: #1A2330; --line: #283242; --line-strong: #364257;
+    --fg: #E7EAF0; --muted: #9AA3B3; --accent: #F2508A; --accent-hover: #FF73A3; --accent-soft: #3A1727; --on-accent: #1B0510;
+    --navy: #08192A; --navy-2: #102A44; --navy-fg: #E3EAF1; --navy-muted: #7C93A9;
+    --ok: #62C892; --ok-soft: #15301F; --warn: #E6B450; --warn-soft: #33270D; --bad: #FF8578; --bad-soft: #3A1815;
+    --info: #86B2FF; --info-soft: #16243C; --neutral: #A6AEBC; --neutral-soft: #232C39;
+    --overlay: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0, 0, 0, 0.4); --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D121A; --surface: #151C27; --surface-2: #1A2330; --line: #283242; --line-strong: #364257;
+  --fg: #E7EAF0; --muted: #9AA3B3; --accent: #F2508A; --accent-hover: #FF73A3; --accent-soft: #3A1727; --on-accent: #1B0510;
+  --navy: #08192A; --navy-2: #102A44; --navy-fg: #E3EAF1; --navy-muted: #7C93A9;
+  --ok: #62C892; --ok-soft: #15301F; --warn: #E6B450; --warn-soft: #33270D; --bad: #FF8578; --bad-soft: #3A1815;
+  --info: #86B2FF; --info-soft: #16243C; --neutral: #A6AEBC; --neutral-soft: #232C39;
+  --overlay: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0, 0, 0, 0.4); --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+h1, h2, h3, h4, h5 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.mono { font-family: var(--mono); font-size: 0.92em; }
+.muted { color: var(--muted); }
+.strong { font-weight: 500; }
+.nowrap { white-space: nowrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- shell ---------- */
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+.side { background: var(--navy); color: var(--navy-fg); position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; padding-block: 18px; }
+.brand { display: flex; gap: 10px; align-items: center; padding-inline: 18px; margin-bottom: 18px; }
+.logo { width: 34px; height: 34px; border-radius: 7px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; letter-spacing: 0.02em; }
+.brand strong { display: block; font-size: 15px; }
+.brand span { font-size: 12px; color: var(--navy-muted); }
+.side nav { display: flex; flex-direction: column; gap: 2px; padding-inline: 10px; flex: 1; }
+.nav-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--navy-muted); padding: 14px 8px 6px; }
+.nav-i { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; font-size: 14px; color: var(--navy-fg); }
+.nav-i.off { color: var(--navy-muted); cursor: default; }
+.nav-i.on { background: var(--navy-2); box-shadow: inset 3px 0 0 var(--accent); font-weight: 500; cursor: pointer; }
+.side-foot { padding: 14px 18px 0; font-size: 12px; color: var(--navy-muted); }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 10px clamp(16px, 3vw, 32px); }
+.top-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mini { display: none; }
+.top-title { font-weight: 500; }
+.proto { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--warn); background: var(--warn-soft); border-radius: 4px; padding: 2px 6px; font-weight: 500; }
+.top-r { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.top-r label { color: var(--muted); font-size: 13px; }
+.top-r select { height: 32px; min-width: 0; max-width: 100%; }
+#view { padding-block: 24px 72px; padding-inline: clamp(16px, 3vw, 32px); width: 100%; max-width: 1440px; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .brand-mini { display: grid; width: 28px; height: 28px; border-radius: 6px; background: var(--accent); color: var(--on-accent); place-items: center; font-weight: 700; font-size: 12px; flex: none; }
+}
+
+/* ---------- controls ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--r); border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--accent); }
+.btn.ghost:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; }
+.btn.ghost-bad { background: transparent; border-color: transparent; color: var(--bad); }
+.btn.ghost-bad:hover { background: var(--bad-soft); }
+.btn.small { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-weight: 500; }
+.icon-btn { width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
+.icon-btn:hover { background: var(--surface-2); color: var(--fg); }
+.inp { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--fg); padding: 0 10px; }
+textarea.inp { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
+select.inp { padding-right: 6px; }
+.inp:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tag-mock { font-size: 10px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--warn); background: var(--warn-soft); border-radius: 4px; padding: 1px 5px; }
+.btn.primary .tag-mock { background: rgba(255, 255, 255, 0.2); color: inherit; }
+
+/* ---------- pills, chips ---------- */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; background: var(--tone-soft); color: var(--tone); }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.t-ok { --tone: var(--ok); --tone-soft: var(--ok-soft); }
+.t-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.t-bad { --tone: var(--bad); --tone-soft: var(--bad-soft); }
+.t-info { --tone: var(--info); --tone-soft: var(--info-soft); }
+.t-neutral { --tone: var(--neutral); --tone-soft: var(--neutral-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 5px; padding: 0 7px; line-height: 20px; white-space: nowrap; }
+.chip.miss { border-style: dashed; border-color: var(--warn); color: var(--warn); background: transparent; }
+.chip.hit { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.chip.more { color: var(--muted); }
+.flag { display: block; width: fit-content; margin-top: 3px; font-size: 11px; font-weight: 500; border-radius: 4px; padding: 0 6px; }
+.flag.warn { color: var(--warn); background: var(--warn-soft); }
+.flag.bad { color: var(--bad); background: var(--bad-soft); }
+
+/* ---------- list view ---------- */
+.page-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; }
+.page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin-top: 4px; }
+.banner { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; background: var(--info-soft); color: var(--fg); border: 1px solid transparent; }
+.banner.t-warn-b { background: var(--warn-soft); }
+.banner.t-bad-b { background: var(--bad-soft); }
+.banner.t-ok-b { background: var(--ok-soft); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 3px; }
+.tab { border: 0; background: transparent; border-radius: 6px; padding: 5px 10px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.tab.on { background: var(--accent-soft); color: var(--accent); }
+.tab-n { font-variant-numeric: tabular-nums; opacity: 0.8; margin-left: 2px; }
+.search { flex: 1 1 260px; max-width: 360px; }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
+.dt { width: 100%; border-collapse: collapse; min-width: 1040px; }
+.dt th { text-align: left; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); white-space: nowrap; }
+.dt td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.dt tbody tr { cursor: pointer; }
+.dt tbody tr:hover td { background: var(--surface-2); }
+.dt tbody tr:last-child td { border-bottom: 0; }
+.dt tr.row-soon td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.dt tr.row-new td { background: var(--accent-soft); }
+.dt .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dt .num { font-variant-numeric: tabular-nums; }
+.dt .empty { text-align: center; color: var(--muted); padding: 40px 14px; cursor: default; }
+.pbar { display: flex; gap: 3px; width: 120px; max-width: 100%; }
+.pbar i { flex: 1; height: 8px; border-radius: 2px; }
+.p-f { background: var(--ok); }
+.p-c { background: var(--neutral-soft); border: 1px solid var(--line-strong); }
+.p-o { background: transparent; border: 1.5px solid var(--info); }
+.foot-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+/* ---------- detail view ---------- */
+.crumbs { display: flex; gap: 8px; align-items: center; color: var(--muted); margin-bottom: 14px; font-size: 13px; }
+.dhead { display: flex; flex-wrap: wrap; gap: 14px 24px; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.dhead-main { min-width: 0; }
+.eyebrow { color: var(--muted); font-size: 12px; letter-spacing: 0.02em; }
+.dhead h1 { font-size: 26px; font-weight: 700; margin: 2px 0 8px; letter-spacing: -0.01em; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--muted); font-size: 13px; }
+.dhead-act { display: flex; flex-wrap: wrap; gap: 8px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px; }
+.card h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+.hc { display: grid; gap: 12px; margin-bottom: 18px; }
+.hc-nums { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.hc-nums div { display: flex; align-items: baseline; gap: 6px; }
+.hc-nums .n { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hc-nums .l { color: var(--muted); }
+.hc-nums .is-ok .n { color: var(--ok); }
+.hc-nums .is-open .n { color: var(--info); }
+.posbar { display: flex; gap: 4px; }
+.posbar i { flex: 1; height: 12px; border-radius: 3px; max-width: 120px; }
+.cxl { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.cxl li { color: var(--muted); }
+.cxl strong { color: var(--fg); font-weight: 500; }
+
+.dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+@media (max-width: 1150px) { .dgrid { grid-template-columns: minmax(0, 1fr); } }
+.dside { display: grid; gap: 14px; min-width: 0; }
+.sec-h { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.sec-h h2 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.count { font-size: 12px; font-weight: 500; background: var(--neutral-soft); color: var(--muted); border-radius: 999px; padding: 1px 8px; }
+.sec-act { display: flex; flex-wrap: wrap; gap: 8px; }
+.sec-sub { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.cand-list { display: grid; gap: 10px; }
+.empty-box { border: 1px dashed var(--line-strong); border-radius: var(--r); padding: 22px; text-align: center; color: var(--muted); background: var(--surface); }
+
+.cand { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); min-width: 0; }
+.cand.open { border-color: var(--line-strong); }
+.cand-head { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto 16px; gap: 12px; align-items: center; text-align: left; background: none; border: 0; padding: 12px 14px; cursor: pointer; border-radius: var(--r); }
+.cand-head:hover { background: var(--surface-2); }
+.avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--info-soft); color: var(--info); flex: none; }
+.avatar.ext { background: var(--accent-soft); color: var(--accent); }
+.avatar.sm { width: 28px; height: 28px; font-size: 11px; }
+.cand-name { min-width: 0; }
+.cand-name strong { display: block; font-weight: 500; }
+.cand-name .sub { font-size: 12px; color: var(--muted); }
+.cand-step { font-size: 13px; color: var(--muted); text-align: right; }
+.chev { width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-top: -4px; transition: transform 0.15s; }
+.cand.open .chev { transform: rotate(-135deg); margin-top: 4px; }
+@media (max-width: 640px) {
+  .cand-head { grid-template-columns: auto minmax(0, 1fr) 16px; }
+  .cand-step { grid-column: 2; text-align: left; }
+  .cand-head .pill { grid-column: 2; justify-self: start; }
+  .cand-head .chev { grid-row: 1; grid-column: 3; }
+}
+.cand-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px 60px; margin-top: -4px; }
+.badge-btn { border: 1px solid var(--info); color: var(--info); background: var(--info-soft); border-radius: 999px; font-size: 12px; font-weight: 500; padding: 1px 10px; cursor: pointer; }
+.badge-warn { border: 1px solid var(--warn); color: var(--warn); background: var(--warn-soft); border-radius: 999px; font-size: 12px; font-weight: 500; padding: 1px 10px; }
+.multi-list { margin: 0 14px 10px 60px; padding: 8px 12px; list-style: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 4px; font-size: 13px; }
+@media (max-width: 640px) { .cand-flags, .multi-list { padding-left: 14px; margin-left: 14px; } .cand-flags { margin-left: 0; } }
+
+.cand-body { border-top: 1px solid var(--line); padding: 14px; display: grid; gap: 16px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 18px; margin: 0; }
+.facts div { min-width: 0; }
+.facts dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.file { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.file-ic { font-size: 9px; font-weight: 700; color: var(--bad); border: 1px solid var(--bad); border-radius: 3px; padding: 0 3px; letter-spacing: 0.04em; }
+
+.flow-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.flow-h h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; position: relative; padding-bottom: 12px; }
+.step::before { content: ""; position: absolute; left: 10px; top: 18px; bottom: -2px; width: 2px; background: var(--line); }
+.step:last-child::before { display: none; }
+.step .dot { width: 14px; height: 14px; border-radius: 50%; margin: 12px 0 0 4px; background: var(--surface); border: 3px solid var(--tone); position: relative; z-index: 1; }
+.step-card { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; background: var(--surface); display: grid; gap: 6px; min-width: 0; }
+.step-top { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: flex-start; }
+.step-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.step-top h4 { font-size: 15px; font-weight: 500; }
+.sel-status { width: auto; height: 30px; font-size: 13px; border-color: var(--tone); color: var(--tone); background: var(--tone-soft); font-weight: 500; }
+.step-meta { color: var(--muted); font-size: 13px; }
+.changes { font-size: 12px; color: var(--muted); }
+.changes b { color: var(--fg); font-weight: 500; }
+.dur { margin-left: 6px; font-variant-numeric: tabular-nums; background: var(--neutral-soft); border-radius: 4px; padding: 0 5px; }
+.empty-flow { border: 1px dashed var(--line-strong); border-radius: var(--r); padding: 14px; color: var(--muted); text-align: center; }
+
+.parts { display: grid; gap: 6px; }
+.parts h5 { font-size: 12px; font-weight: 500; color: var(--muted); }
+.parts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.part { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.part-b { display: grid; gap: 4px; min-width: 0; }
+.part .muted { font-size: 12px; }
+.fb { display: grid; gap: 3px; justify-items: start; }
+.fb p { overflow-wrap: anywhere; }
+.fb-form { display: grid; gap: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.fb-form fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.fb-form legend { font-weight: 500; font-size: 13px; margin-bottom: 4px; }
+.fb-form label { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; }
+.addpart { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.addpart .inp { height: 30px; font-size: 13px; }
+@media (max-width: 560px) { .addpart { grid-template-columns: minmax(0, 1fr); } }
+.hint { font-size: 12px; color: var(--muted); }
+
+.negbox { border: 1px solid var(--bad); background: var(--bad-soft); border-radius: 6px; padding: 10px; display: grid; gap: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.err { color: var(--bad); font-size: 13px; font-weight: 500; }
+
+.addbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); }
+.addbar-l { font-weight: 500; font-size: 13px; margin-right: 4px; }
+.why { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.stepform { border: 1px solid var(--accent); border-radius: var(--r); padding: 12px; display: grid; gap: 10px; background: var(--surface); }
+.stepform h4 { font-size: 15px; font-weight: 500; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.warnbox { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 10px; display: grid; gap: 8px; }
+.cand-act { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.closed-box { border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+
+.notes { display: grid; gap: 6px; }
+.notes h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.note-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.note-list li { background: var(--surface-2); border-radius: 6px; padding: 7px 10px; }
+.note-h { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 12px; }
+.note-h strong { font-weight: 500; }
+.note-list p { overflow-wrap: anywhere; margin-top: 1px; }
+.note-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.note-add .inp { min-height: 32px; }
+
+.dl { display: grid; gap: 9px; margin: 12px 0 0; }
+.dl div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
+.dl dt { color: var(--muted); font-size: 13px; }
+.dl dd { margin: 0; overflow-wrap: anywhere; }
+.src-sum { cursor: pointer; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; list-style: none; }
+.src-sum::-webkit-details-marker { display: none; }
+.src-sum .muted { font-size: 12px; }
+pre.src { margin: 12px 0 0; padding: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow-y: auto; }
+.hist { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.hist li { display: grid; gap: 1px; font-size: 13px; padding-left: 12px; border-left: 2px solid var(--line); }
+.hist .muted { font-size: 12px; }
+
+/* ---------- drawer, modal, toast ---------- */
+.overlay { position: fixed; inset: 0; background: var(--overlay); z-index: 40; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--bg); z-index: 41; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.dr-head, .dr-foot { background: var(--surface); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.dr-head { border-bottom: 1px solid var(--line); }
+.dr-head h2 { font-size: 18px; }
+.dr-foot { border-top: 1px solid var(--line); display: grid; justify-content: stretch; }
+.dr-foot .row { justify-content: flex-end; }
+.dr-body { flex: 1; overflow-y: auto; padding: 18px 20px 28px; display: grid; gap: 22px; align-content: start; }
+.dr-body h3 { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.drop { margin-top: 10px; border: 2px dashed var(--line-strong); border-radius: var(--r); padding: 10px; display: grid; gap: 10px; background: var(--surface); transition: border-color 0.15s, background 0.15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop textarea { font-family: var(--mono); font-size: 12px; }
+.parsed { margin-top: 10px; font-size: 13px; padding: 8px 12px; border-radius: 6px; background: var(--info-soft); }
+.fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; margin-top: 10px; }
+.fgrid.one { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 640px) { .fgrid { grid-template-columns: minmax(0, 1fr); } }
+.field { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field > label { font-size: 13px; font-weight: 500; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.req { color: var(--accent); }
+.tag-auto { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--info); background: var(--info-soft); border-radius: 4px; padding: 0 5px; }
+.field.auto .inp { border-color: var(--info); background: var(--info-soft); }
+.field.miss .inp { border-color: var(--bad); background: var(--bad-soft); }
+.fmsg { font-size: 12px; font-weight: 500; }
+.fmsg.bad { color: var(--bad); }
+.fmsg.warn { color: var(--warn); }
+.fhint { font-size: 12px; color: var(--muted); }
+.errbox { background: var(--bad-soft); color: var(--fg); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+.errbox strong { color: var(--bad); }
+
+.modal { position: fixed; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); max-height: calc(100% - 48px); display: flex; flex-direction: column; background: var(--surface); border-radius: 10px; box-shadow: var(--shadow-lg); }
+.modal.wide { width: min(820px, calc(100% - 32px)); }
+.modal header, .modal footer { padding: 12px 18px; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.modal header { border-bottom: 1px solid var(--line); }
+.modal header h2 { font-size: 17px; }
+.modal footer { border-top: 1px solid var(--line); justify-content: flex-end; }
+.m-body { padding: 16px 18px; overflow-y: auto; display: grid; gap: 12px; }
+.mockbox { border: 1px dashed var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+.picks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pick { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; cursor: pointer; }
+.pick:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.pick.is-off { cursor: default; opacity: 0.6; }
+.pick input { margin-top: 9px; }
+.pick-b { display: grid; gap: 4px; min-width: 0; }
+.pick-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.pick-top span { font-size: 13px; }
+.pick .muted { font-size: 12px; }
+
+#toasts { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: grid; gap: 8px; max-width: min(420px, calc(100% - 32px)); }
+.toast { background: var(--fg); color: var(--bg); border-radius: var(--r); padding: 10px 14px; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow-lg); font-size: 13px; transition: opacity 0.3s, transform 0.3s; }
+.toast .btn { background: transparent; border-color: var(--bg); color: var(--bg); }
+.toast.out { opacity: 0; transform: translateY(6px); }
+/* ---------- collapsible sidebar ---------- */
+.app { grid-template-columns: var(--side-w, 236px) minmax(0, 1fr); transition: grid-template-columns 0.2s; }
+.nav-i { display: flex; align-items: center; gap: 12px; }
+.nav-ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.side-toggle { margin: 8px 10px 0; display: flex; align-items: center; gap: 12px; border: 0; background: transparent; color: var(--navy-muted); padding: 8px 10px; border-radius: 6px; cursor: pointer; text-align: left; }
+.side-toggle:hover { background: var(--navy-2); color: var(--navy-fg); }
+.side-toggle .nav-ic { transition: transform 0.2s; }
+@media (min-width: 901px) {
+  .app.collapsed { --side-w: 64px; }
+  .app.collapsed .side .lbl { display: none; }
+  .app.collapsed .brand { padding-inline: 15px; }
+  .app.collapsed .nav-h { padding: 0; margin: 10px 8px 6px; border-top: 1px solid var(--navy-2); }
+  .app.collapsed .nav-i, .app.collapsed .side-toggle { justify-content: center; padding-inline: 0; }
+  .app.collapsed .side-toggle .nav-ic { transform: rotate(180deg); }
+}
+.menu-btn { display: none; }
+.nav-scrim { display: none; position: fixed; inset: 0; background: var(--overlay); z-index: 44; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .menu-btn { display: inline-grid; place-items: center; }
+  .app.mobile-open .side { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: 260px; z-index: 45; box-shadow: var(--shadow-lg); }
+  .app.mobile-open .nav-scrim { display: block; }
+  .side-toggle { display: none; }
+}
+
+/* ---------- row actions menu ---------- */
+.kebab { width: 30px; height: 28px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.kebab:hover { background: var(--surface-2); border-color: var(--line); color: var(--fg); }
+.dhead-act .kebab { height: 34px; width: 34px; border-color: var(--line-strong); background: var(--surface); }
+.dt td.act-cell { width: 46px; padding: 8px; vertical-align: middle; }
+.menu { position: fixed; z-index: 50; width: 200px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 4px; display: grid; }
+.menu button { text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--fg); }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-2); outline: none; }
+.menu button.bad { color: var(--bad); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.dt tr.row-deleted td { color: var(--muted); }
+
+/* ---------- demand sub-pages ---------- */
+.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 4px 0 18px; overflow-x: auto; }
+.subtab { border: 0; background: none; padding: 10px 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
+.subtab:hover { color: var(--fg); }
+.subtab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.dpage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .dpage { grid-template-columns: minmax(0, 1fr); } }
+.dcol { display: grid; gap: 14px; min-width: 0; }
+.card-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dpage .dl div { grid-template-columns: 140px minmax(0, 1fr); }
+
+/* ---------- compact top bar ---------- */
+.top { padding-block: 6px; gap: 8px 12px; flex-wrap: nowrap; }
+.top-l { flex: 1 1 auto; }
+.top-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-r { flex-wrap: nowrap; gap: 6px; flex: none; }
+.top-r label { font-size: 12px; }
+.top-r select.inp { width: auto; max-width: 250px; height: 28px; font-size: 12px; padding: 0 4px; }
+.top-r .btn.small { height: 28px; padding: 0 8px; font-size: 12px; }
+.theme-btn .nav-ic { width: 15px; height: 15px; }
+@media (max-width: 700px) { .top-r label, .proto, .theme-btn .lbl-t { display: none; } .top-r select.inp { max-width: 150px; } }
+
+/* ---------- other-demand links ---------- */
+.links { display: flex; flex-wrap: wrap; gap: 4px; }
+.lk { font-size: 11px; font-weight: 500; border-radius: 4px; padding: 1px 6px; background: var(--tone-soft); color: var(--tone); }
+.dupbox { border-radius: 6px; padding: 8px 12px; font-size: 13px; display: grid; gap: 6px; background: var(--info-soft); }
+.dupbox.block { background: var(--bad-soft); }
+
+/* ---------- skills from the Module 1 catalog ---------- */
+.chip.must { font-weight: 700; border-color: var(--line-strong); }
+.chip.self { border-color: var(--info); color: var(--info); background: var(--info-soft); }
+.chip.low { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+.skillpick { display: grid; gap: 8px; }
+.sklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sklist li { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; background: var(--surface); }
+.sk-name { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.sk-name .muted { font-size: 12px; }
+.sklist .inp { height: 30px; font-size: 13px; }
+.ck { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; white-space: nowrap; }
+.skadd { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 6px; align-items: center; }
+@media (max-width: 560px) { .sklist li, .skadd { grid-template-columns: minmax(0, 1fr); } }
+.field.miss .skillpick .inp { border-color: var(--line-strong); background: var(--surface); }
+.field.auto .skillpick .inp { border-color: var(--line-strong); background: var(--surface); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app collapsed">
+  <aside class="side" aria-label="Modules">
+    <div class="brand"><span class="logo">SM</span><div class="lbl"><strong>Skill Matrix</strong><span>Workforce platform</span></div></div>
+    <nav>
+      <p class="nav-h"><span class="lbl">Module 01 · Skills</span></p>
+      <span class="nav-i off" title="Dashboard (Module 01, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="lbl">Dashboard</span></span>
+      <span class="nav-i off" title="Employees (Module 01, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.3.3 3.9 2 4.5 4.5"/></svg><span class="lbl">Employees</span></span>
+      <span class="nav-i off" title="Skill catalog (Module 01, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">Skill catalog</span></span>
+      <p class="nav-h"><span class="lbl">Module 02 · Workforce</span></p>
+      <span class="nav-i off" title="Projects (Module 02, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Projects</span></span>
+      <span class="nav-i off" title="Bench (Module 02, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11h16M6 11V7h12v4M5 11v8M19 11v8M5 15h14"/></svg><span class="lbl">Bench</span></span>
+      <span class="nav-i off" title="Availability (Module 02, not in this prototype)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span class="lbl">Availability</span></span>
+      <p class="nav-h"><span class="lbl">Module 03 · Demand</span></p>
+      <button class="nav-i on" data-act="go-list" title="Demands"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg><span class="lbl">Demands</span></button>
+      <p class="nav-h"><span class="lbl">Mocked in this prototype</span></p>
+      <span class="nav-i off" title="Search (Module 04, mocked)"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><span class="lbl">Search (Module 04)</span></span>
+    </nav>
+    <button class="side-toggle" data-act="toggle-nav" aria-label="Expand the sidebar" title="Expand or collapse the sidebar"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg><span class="lbl">Collapse</span></button>
+    <p class="side-foot lbl">Prototype with mock data. Your changes stay in this browser only.</p>
+  </aside>
+  <div class="nav-scrim" data-act="toggle-nav"></div>
+  <div class="main">
+    <header class="top">
+      <div class="top-l"><button class="icon-btn menu-btn" data-act="toggle-nav" aria-label="Open the menu"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="brand-mini">SM</span><span class="top-title">Demand Management</span><span class="proto">Prototype</span></div>
+      <div class="top-r">
+        <label for="view-as">View as</label>
+        <select id="view-as" class="inp" data-change="view-as"></select>
+        <button class="btn small theme-btn" data-act="toggle-theme" aria-label="Switch to dark mode"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span class="lbl-t">Dark</span></button>
+        <button class="btn small" data-act="reset-data" title="Reset demo data">Reset data</button>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
+</div>
+<div id="layer"></div>
+<div id="menu-root"></div>
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= dates and helpers ================= */
+const T0 = new Date(); const Y = T0.getFullYear(), MO = T0.getMonth(), DA = T0.getDate();
+const pad = n => String(n).padStart(2, '0');
+const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const rel = n => isoOf(new Date(Y, MO, DA + n));
+const relT = (n, h = 10, m = 0) => new Date(Y, MO, DA + n, h, m).toISOString();
+const nowIso = () => new Date().toISOString();
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const parseIso = s => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
+const fmtD = s => { if (!s) return 'Not set'; const d = parseIso(s); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
+const fmtShort = ts => { const d = new Date(ts); return `${d.getDate()} ${MON[d.getMonth()]}`; };
+const fmtDT = ts => { const d = new Date(ts); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const fmtWhen = s => { if (!s) return 'Not set'; const [dp, t] = s.split('T'); return `${fmtD(dp)}, ${t || ''}`; };
+const dmy = s => { const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
+const daysFromToday = s => Math.round((parseIso(s) - new Date(Y, MO, DA)) / 864e5);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => 'x' + Math.random().toString(36).slice(2, 10);
+const $ = (s, r = document) => r.querySelector(s);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const asciiName = s => s.replace(/đ/g, 'dj').replace(/Đ/g, 'Dj').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '_');
+const initials = n => n.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+
+/* ================= reference data (mock M1 / M2) ================= */
+const USERS = {
+  ana: { name: 'Ana Petrović', role: 'dm', roleLabel: 'Demand manager (PMO)' },
+  jelena: { name: 'Jelena Marković', role: 'hr', roleLabel: 'HR BP / Recruiter' },
+  stefan: { name: 'Stefan Jovanović', role: 'hr', roleLabel: 'HR BP / Recruiter' },
+  dragan: { name: 'Dragan Nikolić', role: 'mgmt', roleLabel: 'Management' },
+  bojan: { name: 'Bojan Ilić', role: 'lm', roleLabel: 'Line manager' },
+  ivana: { name: 'Ivana Đorđević', role: 'lm', roleLabel: 'Line manager' },
+  luka: { name: 'Luka Stojanović', role: 'emp', roleLabel: 'Employee' },
+};
+const VIEW_AS = ['ana', 'jelena', 'dragan', 'bojan', 'ivana', 'luka'];
+const PARTICIPANT_USERS = ['bojan', 'ivana', 'jelena', 'stefan', 'dragan'];
+const RECRUITERS = ['jelena', 'stefan'];
+/* Module 1 skill catalog: the seed data of the application (002-seed-data.sql) */
+const CATALOG = [
+  ['Java', 'Technical'], ['Spring Boot', 'Technical'], ['React', 'Technical'], ['PostgreSQL', 'Technical'], ['Podman', 'Technical'], ['Kubernetes', 'Technical'], ['AWS', 'Technical'], ['Azure', 'Technical'],
+  ['Communication', 'Soft Skills'], ['Teamwork', 'Soft Skills'], ['Leadership', 'Soft Skills'], ['Problem Solving', 'Soft Skills'],
+  ['English', 'Languages'], ['Italian', 'Languages'],
+  ['Git', 'Tools / Platforms'], ['Jira', 'Tools / Platforms'], ['Confluence', 'Tools / Platforms'], ['SharePoint', 'Tools / Platforms'],
+].map(([name, cat]) => ({ name, cat }));
+const SKILL_ALIASES = { 'spring': 'Spring Boot', 'springboot': 'Spring Boot', 'postgres': 'PostgreSQL', 'k8s': 'Kubernetes', 'microsoft azure': 'Azure', 'amazon web services': 'AWS', 'github': 'Git', 'gitlab': 'Git' };
+/* Module 1 knowledge levels (003-knowledge-level-table.sql) */
+const LEVELS = [null, 'Beginner', 'Intermediate', 'Experienced', 'Advanced', 'Master'];
+const SENIORITY_LEVEL = { junior: 2, medior: 3, senior: 4, lead: 5 };
+/* language levels: CEFR in the email, mapped to the Module 1 knowledge levels */
+const CEFR = [null, 'A2', 'B1', 'B2', 'C1', 'C2'];
+const CEFR_LEVEL = { a1: 1, a2: 1, b1: 2, b2: 3, c1: 4, c2: 5 };
+const isLang = name => { const s = catalogSkill(name); return !!s && s.cat === 'Languages'; };
+/* Module 2 workforce cost codes. The final names are an open question (M2 OQ-06). */
+const RANGE_CODES = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6'];
+const rangeNum = r => parseInt(String(r || '').replace(/\D/g, ''), 10) || null;
+function catalogSkill(name) { const n = String(name).trim().toLowerCase(); const a = SKILL_ALIASES[n]; return CATALOG.find(s => s.name.toLowerCase() === (a ? a.toLowerCase() : n)) || null; }
+/* Module 2 horizontal tree, leaf paths (012-m2-org-structure-seed.sql) */
+const HORIZ = [
+  'ENG DIGITAL / ATLANTIC - ADVANCED ENTERPRISE PLATFORMS',
+  'ENG DIGITAL / ADVANCED ENTERPRISE PLATFORMS / HXM',
+  'ENG DIGITAL / ADVANCED ENTERPRISE PLATFORMS / Microsoft',
+  'ENG DIGITAL / ADVANCED ENTERPRISE PLATFORMS / Other',
+  'ENG DIGITAL / ADVANCED ENTERPRISE PLATFORMS / Saleforce',
+  'ENG DIGITAL / ADVANCED ENTERPRISE PLATFORMS / SAP-Core',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / BSI TELCO E MEDIA',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / BSI MOBILITY',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM SOL CENTER CENTRO',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM EAI',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM SOL CENTER NORD',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM PLAT & GIS SYST',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM SOL CENTER SUD',
+  'ENG DIGITAL / APPLICATION MODERNIZATION AND MANAGEMENT / AM APP OUTSOURCING',
+  'ENG DIGITAL / ENG CLOUD / AM APP OUTSOURCING',
+  'ENG DIGITAL / EXTRARED / AM APP OUTSOURCING',
+  'ENG DIGITAL / ENG SECURITY / AM APP OUTSOURCING',
+  'ENG DIGITAL / ENG AI & DATA / AM APP OUTSOURCING',
+  'ENG DIGITAL / DIGITAL EXPERIENCE / AM APP OUTSOURCING',
+  'ENG DIGITAL / INDUSTRY EXCELLENCE / AM APP OUTSOURCING',
+  'ENG DIGITAL / TECHNOLOGY SERVICES / AM APP OUTSOURCING',
+  'ENTERPRISE / NET@SUITE / AM APP OUTSOURCING',
+  'ENTERPRISE / CONSUMER & INDUSTRIAL GOODS / AM APP OUTSOURCING',
+  'FINANCIAL SERVICES / FINANCIAL SERVICES / AM APP OUTSOURCING',
+  'HEALTH CARE / HEALTH CARE / AM APP OUTSOURCING',
+  'GROUP ADMINISTRATION, FINANCE, CONTROL & PROCUREMENT / Corporate Functions / AM APP OUTSOURCING',
+  'GROUP ADMINISTRATION, FINANCE, CONTROL & PROCUREMENT / FINANCE / AM APP OUTSOURCING',
+  'GROUP ADMINISTRATION, FINANCE, CONTROL & PROCUREMENT / Other / AM APP OUTSOURCING',
+];
+/* Module 2 vertical taxonomy, values exactly as stored */
+const VERT = ['Enterpise / Mobility', 'Enterpise / Energy&Utilty', 'Enterpise / Telco&Media', 'Enterpise / Industry', 'Financial sector / Financial sector', 'Public Sector / Europian commision', 'Public Sector / Healtcare', 'Public Sector / Municipia', 'Public Sector / Public Administration', 'Other'];
+/* Module 2 clients (mock rows: the dev database has no clients yet). Module 2 stores the vertical on the client. */
+const CLIENTS = [
+  { name: 'Banca Nordest', vertical: 'Financial sector / Financial sector' },
+  { name: 'Assicura Group', vertical: 'Financial sector / Financial sector' },
+  { name: 'Rete Energia Nord', vertical: 'Enterpise / Energy&Utilty' },
+  { name: 'Agenzia Dati Pubblici', vertical: 'Public Sector / Public Administration' },
+  { name: 'TeleNord', vertical: 'Enterpise / Telco&Media' },
+  { name: 'Ospedale San Marco', vertical: 'Public Sector / Healtcare' },
+];
+const findClient = n => CLIENTS.find(c => c.name.toLowerCase() === String(n || '').trim().toLowerCase());
+/* Module 2 projects of each client (mock) */
+const PROJECTS = { 'Banca Nordest': ['Payments platform renewal', 'Core banking support'], 'Assicura Group': ['Claims portal'] };
+/* Module 1 employees with employee skills: [self-assessed level, manager-validated level or null] */
+const EMP = {
+  e1: { name: 'Luka Stojanović', title: 'Senior Java Developer', range: 'R4', skills: { Java: [4, 4], 'Spring Boot': [4, 4], PostgreSQL: [3, 3], English: [3, 3] }, alloc: 100, allocEnd: rel(160), lm: 'bojan' },
+  e2: { name: 'Teodora Pavlović', title: 'Java Developer', range: 'R3', skills: { Java: [3, 3], 'Spring Boot': [3, 2], PostgreSQL: [2, null] }, alloc: 100, allocEnd: rel(160), lm: 'bojan' },
+  e3: { name: 'Filip Lazarević', title: 'Frontend Developer', range: 'R3', skills: { React: [4, 3], Git: [3, 3], English: [3, null] }, alloc: 0, lm: 'ivana' },
+  e4: { name: 'Katarina Simić', title: 'Frontend Developer', range: 'R3', skills: { React: [3, 3], English: [4, 4], Jira: [2, 2] }, alloc: 50, allocEnd: rel(40), lm: 'ivana' },
+  e5: { name: 'Aleksa Ristić', title: 'Full-stack Developer', range: 'R4', skills: { React: [4, 4], Azure: [3, 3], Kubernetes: [3, 2], Podman: [3, null], English: [4, 4] }, alloc: 0, lm: 'bojan' },
+  e6: { name: 'Vuk Stevanović', title: 'DevOps Engineer', range: 'R5', skills: { Azure: [4, 4], Podman: [3, 3], Kubernetes: [2, 2] }, alloc: 0, lm: 'bojan' },
+  e7: { name: 'Sara Todorović', title: 'Data Engineer', range: 'R4', skills: { PostgreSQL: [4, 4], AWS: [3, 3], English: [3, 3] }, alloc: 100, allocEnd: rel(25), lm: 'ivana' },
+  e8: { name: 'Mina Kostić', title: 'QA Automation Engineer', range: 'R2', skills: { Jira: [3, 3], English: [3, 3], Git: [2, 2] }, alloc: 0, lm: 'ivana' },
+  e9: { name: 'Uroš Milosavljević', title: 'Backend Developer', range: 'R4', skills: { Java: [4, 3], 'Spring Boot': [3, 3], AWS: [3, 3] }, alloc: 60, allocEnd: rel(70), lm: 'bojan' },
+  e10: { name: 'Jovana Božić', title: 'Business Analyst', range: 'R4', skills: { Jira: [4, 4], Confluence: [4, 4], Italian: [3, 3], Communication: [4, 4] }, alloc: 0, lm: 'ivana' },
+  e11: { name: 'Lazar Jovičić', title: 'Data Engineer', range: 'R3', skills: { PostgreSQL: [3, 3], Azure: [3, null] }, alloc: 100, allocEnd: rel(80), lm: 'ivana' },
+  e12: { name: 'Nevena Ristović', title: 'Frontend Developer', range: 'R3', skills: { React: [2, 2], Italian: [4, 4], English: [3, 3] }, alloc: 50, allocEnd: rel(120), lm: 'ivana' },
+};
+const CANCEL_REASONS = ['Wrong planning', 'Budget', 'Search takes too long', 'No such people on the market', 'Client changed scope', 'Other'];
+const STATUSES = {
+  cv: ['Waiting for feedback', 'Approved', 'Rejected'],
+  meeting: ['Scheduled', 'Done: positive', 'Done: negative', 'Cancelled'],
+  offer: ['Sent', 'Accepted', 'Declined', 'Withdrawn'],
+  custom: ['To do', 'Done', 'Failed'],
+  start: ['Confirmed'],
+};
+const NEG = new Set(['Rejected', 'Done: negative', 'Declined', 'Failed']);
+const MEETING_KINDS = ['Internal interview', 'Technical interview', 'Client interview', 'Other meeting'];
+const TONE_DEMAND = { 'In progress': 'info', 'Completed': 'ok', 'Cancelled': 'neutral', 'On hold': 'warn' };
+const TONE_CAND = { 'In process': 'info', 'Placed': 'ok', 'Rejected': 'bad', 'Withdrawn': 'neutral' };
+function toneStep(st) {
+  if (['Approved', 'Done: positive', 'Accepted', 'Done', 'Confirmed'].includes(st)) return 'ok';
+  if (NEG.has(st)) return 'bad';
+  if (['Cancelled', 'Withdrawn'].includes(st)) return 'neutral';
+  return 'info';
+}
+
+/* ================= seed data ================= */
+const ch = (status, at, by = 'ana') => ({ status, at, by });
+const nt = (by, day, text, h = 12) => ({ by, at: relT(day, h), text });
+const hh = (day, text, by = 'ana', h = 12) => ({ at: relT(day, h), by, text });
+const up = (userId, verdict = null, feedback = '', day = 0) => ({ id: uid(), userId, verdict, feedback, at: verdict ? relT(day, 18) : null });
+const xp = name => ({ id: uid(), name });
+function cvStep(sent, out, outDay, o = {}) {
+  const changes = [ch('Waiting for feedback', relT(sent, 9, 30))];
+  if (out) changes.push(ch(out, relT(outDay, 15)));
+  return { id: uid(), type: 'cv', status: out || 'Waiting for feedback', date: rel(sent), sentTo: o.sentTo || '', by: 'ana', changes, notes: o.notes || [] };
+}
+function meetStep(kind, day, out, outDay, participants, o = {}) {
+  const changes = [ch('Scheduled', relT(Math.min(day - 2, 0), 11))];
+  if (out) changes.push(ch(out, relT(outDay, 17)));
+  return { id: uid(), type: 'meeting', kind, when: `${rel(day)}T${o.time || '10:00'}`, status: out || 'Scheduled', participants, by: 'ana', changes, notes: o.notes || [] };
+}
+function offerStep(day, out, outDay, o = {}) {
+  const changes = [ch('Sent', relT(day, 10), o.by || 'stefan')];
+  if (out) changes.push(ch(out, relT(outDay, 16), o.by || 'stefan'));
+  return { id: uid(), type: 'offer', date: rel(day), status: out || 'Sent', by: o.by || 'stefan', changes, notes: o.notes || [] };
+}
+const startStep = (startDate, pct, day) => ({ id: uid(), type: 'start', startDate, pct, status: 'Confirmed', by: 'ana', changes: [ch('Confirmed', relT(day, 16))], notes: [] });
+const sk = (name, level = null, must = true) => ({ name, level, must });
+const closedAs = (status, reason, day) => ({ status, reason, by: 'ana', at: relT(day, 16) });
+const internal = (empId, o = {}) => Object.assign({ id: uid(), type: 'internal', empId, source: 'Bench search (Module 4)', closed: null, inM2: false, notes: [], steps: [] }, o);
+const external = (name, email, recruiter, o = {}) => Object.assign({ id: uid(), type: 'external', ext: { name, email, recruiter }, source: 'Recruiter', closed: null, notes: [], steps: [] }, o);
+
+function emailFor(d) {
+  return [
+    'From: Demand Tool <no-reply@demand-tool.example>', 'To: Nearshore PMO',
+    `Subject: [Nearshore] New demand ${d.extId} - ${d.title}`, `Date: ${dmy(d.received)}`, '',
+    'A new demand is open for the nearshore centre (Serbia, Albania).', '',
+    `Request ID: ${d.extId}`, `Role: ${d.title}`, `Technologies: ${[...d.skills.filter(s => !isLang(s.name)).map(s => s.name), ...d.missing].join(', ')}`,
+    `Languages: ${d.skills.filter(s => isLang(s.name)).map(s => `${s.name}${s.level ? ` (${CEFR[s.level]})` : ''}`).join(', ') || 'none'}`, `Seniority: ${d.seniority}`,
+    `Number of resources: ${d.emailCount ?? d.requested}`, `Allocation: ${d.allocation}%`,
+    ...(d.rangeCode ? [`Max range: ${d.rangeCode}`] : []), ...(d.maxRate ? [`Max daily rate: ${d.maxRate} EUR`] : []), `Requested by: ${d.requestedBy}`,
+    `Interviewer: ${d.interviewer}`, `Client: ${d.client}`, `Project: ${d.project}`, `Horizontal: ${d.horizontal}`,
+    `Vertical: ${d.vertical}`, `Start date: ${dmy(d.start)}`, `End date: ${dmy(d.end)}`,
+    ...(d.emailNote ? [`Notes: ${d.emailNote}`] : []), '', 'This message is generated automatically. Do not reply.',
+  ].join('\n');
+}
+function sampleEmail() {
+  return [
+    'From: Demand Tool <no-reply@demand-tool.example>', 'To: Nearshore PMO',
+    'Subject: [Nearshore] New demand REQ-2026-0533 - Java Backend Developer', `Date: ${dmy(rel(0))}`, '',
+    'A new demand is open for the nearshore centre (Serbia, Albania).', '',
+    'Request ID: REQ-2026-0533', 'Role: Java Backend Developer', 'Technologies: Java, Spring, Postgres, Kafka',
+    'Languages: Italian (B2), English (C1)',
+    'Seniority: Senior', 'Number of resources: 2', 'Allocation: 50%', 'Max range: R4', 'Max daily rate: 420 EUR', 'Requested by: Chiara Conti',
+    'Interviewer: Andrea Galli', 'Client: Banca Nordest', 'Project: Instant payments gateway',
+    'Horizontal: APPLICATION MODERNIZATION AND MANAGEMENT / AM SOL CENTER NORD',
+    `Start date: ${dmy(rel(30))}`, `End date: ${dmy(rel(210))}`,
+    'Notes: Part-time role, 50% for the first 3 months. Client interview in English.', '',
+    'This message is generated automatically. Do not reply.',
+  ].join('\n');
+}
+
+function seed() {
+  const base = { owner: 'ana', onHold: null, cancellations: [], notes: [], candidates: [], history: [] };
+  const d11 = Object.assign({}, base, {
+    id: 'DEM-0011', extId: 'REQ-2026-0417', title: 'Senior Java Developer', skills: [sk('Java', 4), sk('Spring Boot', 3), sk('PostgreSQL', 2, false), sk('Italian', null, false)], missing: ['Kafka'], seniority: 'Senior',
+    requestedBy: 'Luca Bianchi', interviewer: 'Giulia Romano', received: rel(-58), start: rel(-20), end: rel(160), allocation: 100, requested: 5,
+    horizontal: HORIZ[10], vertical: 'Financial sector / Financial sector', client: 'Banca Nordest', project: 'Payments platform renewal',
+    cancellations: [{ count: 3, reason: 'Budget', note: 'The client saw that 2 people cover the work and cancelled the other 3 positions.', by: 'ana', at: relT(-12, 11) }],
+    notes: [nt('jelena', -40, 'Two external profiles from the recruiter pool. Kafka experience is weak on both.')],
+    candidates: [
+      internal('e1', { inM2: true, steps: [cvStep(-52, 'Approved', -49, { sentTo: 'Giulia Romano' }), meetStep('Client interview', -45, 'Done: positive', -45, [up('bojan', 'positive', 'Strong Spring Boot. Explains design choices well.', -45), xp('Giulia Romano (client)')]), startStep(rel(-20), 100, -41)] }),
+      internal('e2', { inM2: true, steps: [cvStep(-52, 'Approved', -49, { sentTo: 'Giulia Romano' }), meetStep('Technical interview', -44, 'Done: positive', -44, [up('bojan', 'neutral', 'Good Java basics. Needs support with Kafka in the first month.', -44), xp('Giulia Romano (client)')]), startStep(rel(-20), 100, -40)] }),
+      external('Ognjen Perić', 'ognjen.peric@mail.example', 'jelena', { closed: closedAs('Rejected', 'Client needs more Kafka experience.', -30), steps: [cvStep(-38, 'Approved', -35, { sentTo: 'Giulia Romano' }), meetStep('Client interview', -31, 'Done: negative', -30, [xp('Giulia Romano (client)')], { notes: [nt('ana', -30, 'Reason: Client needs more Kafka experience.', 17)] })] }),
+      internal('e9', { closed: closedAs('Withdrawn', 'Positions cancelled before the client sent feedback.', -12), steps: [cvStep(-16)] }),
+    ],
+    history: [hh(-58, 'Created the demand from the automatic email. Autofill filled 16 fields.'), hh(-55, 'Added Luka Stojanović and Teodora Pavlović from Module 4 search.'), hh(-41, 'Luka Stojanović placed. Start date ' + fmtD(rel(-20)) + ', 100%.'), hh(-40, 'Teodora Pavlović placed. Start date ' + fmtD(rel(-20)) + ', 100%.'), hh(-30, 'Ognjen Perić rejected: Client needs more Kafka experience.'), hh(-12, 'Cancelled 3 positions. Reason: Budget.', 'ana', 11), hh(-12, 'Uroš Milosavljević withdrawn: Positions cancelled before the client sent feedback.', 'ana', 11), hh(-12, 'Status changed from In progress to Completed.', 'ana', 11)],
+  });
+  d11.emailCount = 5;
+
+  const d12 = Object.assign({}, base, {
+    id: 'DEM-0012', extId: 'REQ-2026-0498', title: 'Frontend Developer (React)', skills: [sk('React', 3), sk('English', 3), sk('Git', null, false)], missing: ['TypeScript', 'Jest'], seniority: 'Medior',
+    requestedBy: 'Paolo Ferri', interviewer: 'Chiara Conti', received: rel(-9), start: rel(24), end: rel(300), allocation: 100, requested: 2,
+    horizontal: HORIZ[18], vertical: 'Financial sector / Financial sector', client: 'Assicura Group', project: 'Claims portal',
+    notes: [nt('stefan', -2, 'Two more external profiles arrive on Thursday.')],
+    candidates: [
+      internal('e5', { steps: [cvStep(-6, 'Approved', -3, { sentTo: 'Chiara Conti' }), meetStep('Technical interview', -1, 'Done: positive', -1, [up('bojan', 'positive', 'Very good React and TypeScript. English is fine for client calls.', -1), xp('Chiara Conti (client)')], { time: '11:00' })] }),
+      internal('e3', { steps: [cvStep(-6, 'Approved', -4, { sentTo: 'Chiara Conti' }), meetStep('Technical interview', 2, null, null, [up('ivana'), xp('Chiara Conti (client)')], { time: '14:00' })] }),
+      external('Dušan Vasić', 'dusan.vasic@mail.example', 'stefan', { steps: [cvStep(-8, 'Approved', -5, { sentTo: 'Chiara Conti' }), meetStep('Client interview', -3, 'Done: positive', -3, [xp('Chiara Conti (client)'), up('ivana', 'positive', 'Solid with React hooks and unit tests.', -3)], { time: '15:30' }), offerStep(-1, null, null, { notes: [nt('stefan', -1, 'He asked for two days to decide.', 16)] })] }),
+      internal('e4', { steps: [cvStep(-2, null, null, { sentTo: 'Chiara Conti' })] }),
+      external('Tamara Lukić', 'tamara.lukic@mail.example', 'jelena', { closed: closedAs('Rejected', 'Client wants 3+ years of TypeScript.', -5), steps: [cvStep(-8, 'Rejected', -5, { sentTo: 'Chiara Conti', notes: [nt('ana', -5, 'Reason: Client wants 3+ years of TypeScript.', 15)] })] }),
+    ],
+    history: [hh(-9, 'Created the demand from the automatic email. Autofill filled 16 fields.'), hh(-8, 'Added Dušan Vasić and Tamara Lukić (external) from the recruiters.', 'ana', 10), hh(-7, 'Added Aleksa Ristić and Filip Lazarević from Module 4 search.'), hh(-5, 'Tamara Lukić rejected: Client wants 3+ years of TypeScript.', 'ana', 15), hh(-3, 'Added Katarina Simić from Module 4 search.'), hh(-1, 'Dušan Vasić: added step "Offer sent".', 'stefan', 10)],
+  });
+
+  const d13 = Object.assign({}, base, {
+    id: 'DEM-0013', extId: 'REQ-2026-0511', title: 'DevOps Engineer', skills: [sk('Azure', 4), sk('Kubernetes', 3), sk('Podman', null, false)], missing: ['Terraform'], seniority: 'Senior',
+    requestedBy: 'Luca Bianchi', interviewer: 'Andrea Galli', received: rel(-6), start: rel(9), end: rel(190), allocation: 100, requested: 1,
+    horizontal: HORIZ[14], vertical: 'Enterpise / Energy&Utilty', client: 'Rete Energia Nord', project: 'Cloud landing zone',
+    candidates: [
+      internal('e5', { steps: [cvStep(-2, null, null, { sentTo: 'Andrea Galli' })] }),
+      internal('e6', { closed: closedAs('Rejected', 'Client needs production experience with AKS.', -3), steps: [cvStep(-5, 'Rejected', -3, { sentTo: 'Andrea Galli', notes: [nt('ana', -3, 'Reason: Client needs production experience with AKS.', 15)] })] }),
+      external('Arben Hoxha', 'arben.hoxha@mail.example', 'stefan', {}),
+    ],
+    history: [hh(-6, 'Created the demand from the automatic email. Autofill filled 16 fields.'), hh(-5, 'Added Vuk Stevanović from Module 4 search.'), hh(-3, 'Vuk Stevanović rejected: Client needs production experience with AKS.', 'ana', 15), hh(-2, 'Added Aleksa Ristić from Module 4 search.'), hh(-1, 'Added Arben Hoxha (external) from the recruiter.', 'stefan')],
+  });
+
+  const d14 = Object.assign({}, base, {
+    id: 'DEM-0014', extId: 'REQ-2026-0476', title: 'Data Engineer', skills: [sk('PostgreSQL', 3), sk('English', 3), sk('AWS', null, false)], missing: ['Python', 'Spark', 'Databricks'], seniority: 'Medior',
+    requestedBy: 'Paolo Ferri', interviewer: 'Paolo Ferri', received: rel(-15), start: rel(40), end: rel(400), allocation: 100, requested: 3,
+    horizontal: HORIZ[17], vertical: 'Public Sector / Public Administration', client: 'Agenzia Dati Pubblici', project: 'Open data platform',
+    onHold: { reason: 'Client budget review until the end of the month.', by: 'ana', at: relT(-4, 9) },
+    candidates: [internal('e7', { steps: [cvStep(-10, null, null, { sentTo: 'Paolo Ferri' })] })],
+    history: [hh(-15, 'Created the demand from the automatic email. Autofill filled 16 fields.'), hh(-11, 'Added Sara Todorović from Module 4 search.'), hh(-4, 'Put the demand on hold: Client budget review until the end of the month.', 'ana', 9), hh(-4, 'Status changed from In progress to On hold.', 'ana', 9)],
+  });
+
+  const d15 = Object.assign({}, base, {
+    id: 'DEM-0015', extId: 'REQ-2026-0455', title: 'QA Automation Engineer', skills: [sk('Jira', 3), sk('English', 3)], missing: ['Playwright', 'TypeScript'], seniority: 'Medior',
+    requestedBy: 'Chiara Conti', interviewer: 'Chiara Conti', received: rel(-30), start: rel(-5), end: rel(180), allocation: 100, requested: 1,
+    horizontal: HORIZ[6], vertical: 'Enterpise / Telco&Media', client: 'TeleNord', project: 'Self-care app',
+    cancellations: [{ count: 1, reason: 'Client changed scope', note: 'The client moved testing in-house.', by: 'ana', at: relT(-20, 14) }],
+    candidates: [internal('e8', { closed: closedAs('Withdrawn', 'Demand cancelled by the client.', -20), steps: [cvStep(-27, 'Approved', -24, { sentTo: 'Chiara Conti' })] })],
+    history: [hh(-30, 'Created the demand from the automatic email. Autofill filled 16 fields.'), hh(-28, 'Added Mina Kostić from Module 4 search.'), hh(-20, 'Cancelled 1 position. Reason: Client changed scope. The client moved testing in-house.', 'ana', 14), hh(-20, 'Status changed from In progress to Cancelled.', 'ana', 14)],
+  });
+
+  const d16 = Object.assign({}, base, {
+    id: 'DEM-0016', extId: 'REQ-2026-0529', title: 'Business Analyst', skills: [sk('Jira', 3), sk('Confluence', 3), sk('Italian', 3), sk('Communication', null, false)], missing: ['HL7'], seniority: 'Senior',
+    requestedBy: 'Giulia Romano', interviewer: 'Giulia Romano', received: rel(-1), start: rel(35), end: rel(260), allocation: 100, requested: 2,
+    horizontal: HORIZ[24], vertical: 'Public Sector / Healtcare', client: 'Ospedale San Marco', project: 'Patient records integration',
+    emailNote: 'Healthcare domain knowledge is a plus.',
+    history: [hh(-1, 'Created the demand from the automatic email. Autofill filled 17 fields.')],
+  });
+
+  const demands = [d16, d13, d12, d14, d15, d11];
+  const COSTS = { 'DEM-0011': ['R4', 420], 'DEM-0012': ['R3', 350], 'DEM-0013': ['R4', 450], 'DEM-0014': ['R3', null], 'DEM-0015': ['R2', 300], 'DEM-0016': ['R4', null] };
+  const RATES = { 'Ognjen Perić': 400, 'Dušan Vasić': 380, 'Tamara Lukić': 300, 'Arben Hoxha': 330 };
+  demands.forEach(d => {
+    [d.rangeCode, d.maxRate] = COSTS[d.id];
+    d.candidates.forEach(c => { if (c.type === 'external') c.ext.rate = RATES[c.ext.name] ?? null; });
+    d.source = emailFor(d); delete d.emailCount; delete d.emailNote;
+  });
+  return { v: 3, me: 'ana', seq: 17, demands };
+}
+
+/* ================= state ================= */
+const STORE_KEY = 'm3-demand-poc-v3';
+function load() { try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.v === 3 && Array.isArray(s.demands)) return s; } catch (e) {} return null; }
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
+let S = load() || seed();
+const ui = { view: 'list', demandId: null, filter: 'All', q: '', open: new Set(), multi: new Set(), addStep: null, neg: null, genCv: null, draft: null, modal: null, histAll: false, newRow: null, menu: null };
+const NAV_KEY = 'm3-demand-poc-nav';
+const THEME_KEY = 'm3-demand-poc-theme';
+
+const me = () => Object.assign({ id: S.me }, USERS[S.me]);
+const role = () => USERS[S.me].role;
+const viewingDeleted = () => ui.view === 'detail' && !!(curD() && curD().deleted);
+const canNote = () => ['dm', 'hr'].includes(role()) && !viewingDeleted();
+const isDM = () => role() === 'dm' && !viewingDeleted();
+const userName = id => (USERS[id] ? USERS[id].name : id);
+const findDemand = id => S.demands.find(d => d.id === id);
+const curD = () => findDemand(ui.demandId);
+const findCand = (d, id) => d && d.candidates.find(c => c.id === id);
+const findStep = (c, id) => c && c.steps.find(s => s.id === id);
+const nameOf = c => (c.type === 'internal' ? EMP[c.empId].name : c.ext.name);
+const hist = (d, text) => d.history.push({ at: nowIso(), by: S.me, text });
+
+const cancelledCount = d => d.cancellations.reduce((a, x) => a + x.count, 0);
+const isPlaced = c => !c.closed && c.steps.some(s => s.type === 'start');
+const filledCount = d => d.candidates.filter(isPlaced).length;
+const openCount = d => d.requested - cancelledCount(d) - filledCount(d);
+function demandStatus(d) { if (d.onHold) return 'On hold'; if (openCount(d) > 0) return 'In progress'; return filledCount(d) > 0 ? 'Completed' : 'Cancelled'; }
+function candStatus(c) { if (c.closed) return c.closed.status; if (isPlaced(c)) return 'Placed'; return 'In process'; }
+function withStatusLog(d, fn) { const before = demandStatus(d); fn(); const after = demandStatus(d); if (before !== after) hist(d, `Status changed from ${before} to ${after}.`); }
+
+function lmSees(c) { return c.steps.some(s => s.type === 'meeting' && s.participants.some(p => p.userId === S.me)); }
+function visibleDemands(withDeleted = false) {
+  const r = role(); if (r === 'emp') return [];
+  const base = S.demands.filter(d => !d.deleted || (withDeleted && r === 'dm'));
+  return r === 'lm' ? base.filter(d => d.candidates.some(lmSees)) : base;
+}
+function visibleCands(d) { return role() === 'lm' ? d.candidates.filter(lmSees) : d.candidates; }
+
+function samePerson(a, b) {
+  if (a.type !== b.type) return false;
+  if (a.type === 'internal') return a.empId === b.empId;
+  return (a.ext.email && a.ext.email.toLowerCase() === (b.ext.email || '').toLowerCase()) || a.ext.name.toLowerCase() === b.ext.name.toLowerCase();
+}
+function otherActive(d, c) {
+  const out = [];
+  for (const d2 of S.demands) { if (d2 === d || d2.deleted) continue; for (const c2 of d2.candidates) if (!c2.closed && samePerson(c, c2)) out.push({ d: d2, c: c2 }); }
+  return out;
+}
+function sessionPlacementsPct(empId, exceptId) {
+  let sum = 0;
+  for (const d of S.demands) for (const c of d.candidates) {
+    if (d.deleted) continue;
+    if (c.type === 'internal' && c.empId === empId && c.id !== exceptId && !c.inM2 && isPlaced(c)) sum += c.steps.find(s => s.type === 'start').pct;
+  }
+  return sum;
+}
+/* every link of a person to other demands: active, placed, or closed */
+function personLinks(d, c) {
+  const out = [];
+  for (const d2 of S.demands) { if (d2 === d || d2.deleted) continue; for (const c2 of d2.candidates) if (samePerson(c, c2)) out.push({ d: d2, c: c2 }); }
+  return out;
+}
+function linkChips(links) {
+  return `<span class="links">${links.map(x => {
+    if (x.c.closed) return `<span class="lk t-neutral">${esc(x.c.closed.status)} on ${x.d.id}</span>`;
+    if (isPlaced(x.c)) return `<span class="lk t-warn">Placed on ${x.d.id} at ${x.c.steps.find(s => s.type === 'start').pct}%</span>`;
+    return `<span class="lk t-info">On ${x.d.id}: ${esc(currentStepLabel(x.c))}</span>`;
+  }).join('')}</span>`;
+}
+function freeInfo(empId) {
+  const e = EMP[empId]; const alloc = e.alloc + sessionPlacementsPct(empId);
+  if (alloc <= 0) return { text: 'Bench, 100% free now', rank: 0, show: true, alloc };
+  if (alloc < 100) return { text: `${100 - alloc}% free now (${alloc}% allocated)`, rank: 1, show: true, alloc };
+  if (e.allocEnd && daysFromToday(e.allocEnd) <= 92) return { text: `Free from ${fmtD(e.allocEnd)}`, rank: 2, show: true, alloc };
+  return { text: e.allocEnd ? `Allocated until ${fmtD(e.allocEnd)}` : 'Fully allocated', rank: 3, show: false, alloc };
+}
+
+const stepTitle = s => ({ cv: 'CV sent', meeting: s.kind, offer: 'Offer sent', custom: s.title, start: 'Start date confirmed' }[s.type]);
+function currentStepLabel(c) {
+  if (!c.steps.length) return 'No steps yet';
+  const s = c.steps[c.steps.length - 1];
+  return s.type === 'start' ? `Starts ${fmtD(s.startDate)}` : `${stepTitle(s)}: ${s.status}`;
+}
+
+/* ================= small views ================= */
+const pill = (text, tone) => `<span class="pill t-${tone}">${esc(text)}</span>`;
+const skillNames = d => d.skills.map(s => s.name);
+const lvlName = l => (l ? LEVELS[l] : 'Any level');
+const skillChip = s => `<span class="chip ${s.must ? 'must' : ''}" title="${s.must ? 'Must have' : 'Nice to have'}, ${lvlName(s.level)}">${esc(s.name)}${s.level ? ` · ${LEVELS[s.level]}` : ''}</span>`;
+const missChips = list => list.map(t => `<span class="chip miss" title="Not in the Module 1 skill catalog">${esc(t)}</span>`).join('');
+function empSkillFit(empId, req) {
+  const rec = EMP[empId].skills[req.name]; if (!rec) return { state: 'none' };
+  const [self, val] = rec, lvl = val ?? self;
+  if (req.level && lvl < req.level) return { state: 'low', lvl, val };
+  return { state: val == null ? 'self' : 'ok', lvl, val };
+}
+function fitChips(empId, d) {
+  return d.skills.map(r => {
+    const f = empSkillFit(empId, r);
+    const lab = f.state === 'none' ? 'no record' : `${LEVELS[f.lvl]}${f.val == null ? ', self-assessed' : ''}`;
+    return `<span class="chip ${{ ok: 'hit', self: 'self', low: 'low', none: 'miss' }[f.state]} ${r.must ? 'must' : ''}" title="The demand needs ${lvlName(r.level)}${r.must ? ', must have' : ', nice to have'}">${esc(r.name)}: ${lab}</span>`;
+  }).join('');
+}
+function mustMet(empId, d) { const must = d.skills.filter(s => s.must); return { met: must.filter(r => ['ok', 'self'].includes(empSkillFit(empId, r).state)).length, total: must.length }; }
+/* cost check: internal = Module 2 range code, external = expected daily rate */
+function costFit(d, c) {
+  if (c.type === 'internal') {
+    const r = EMP[c.empId].range; if (!r) return null;
+    const over = !!d.rangeCode && rangeNum(r) > rangeNum(d.rangeCode);
+    return { text: `${r}${d.rangeCode ? (over ? `, above the max ${d.rangeCode}` : `, within ${d.rangeCode}`) : ''}`, over };
+  }
+  const rate = c.ext && c.ext.rate; if (!rate) return null;
+  const over = !!d.maxRate && rate > d.maxRate;
+  return { text: `${rate} EUR/day${d.maxRate ? (over ? `, above the max ${d.maxRate}` : `, within ${d.maxRate}`) : ''}`, over };
+}
+const costLabel = cf => (cf ? `<span class="lk ${cf.over ? 't-bad' : 't-ok'}">Cost: ${esc(cf.text)}</span>` : '');
+const FIT_LEGEND = `<p class="fhint">Skill levels come from Module 1 (employee skills). Green: the validated level is enough. Blue: only a self-assessed level. Yellow: the level is too low. Dashed: no record. Bold: must-have skill.</p>`;
+function posArr(d) { const f = filledCount(d), cc = cancelledCount(d), o = Math.max(0, openCount(d)); return [...Array(f).fill('f'), ...Array(cc).fill('c'), ...Array(o).fill('o')]; }
+const miniBar = d => `<span class="pbar" aria-hidden="true">${posArr(d).map(x => `<i class="p-${x}"></i>`).join('')}</span>`;
+
+function roleBanner() {
+  const r = role();
+  if (r === 'hr') return `<div class="banner"><strong>${esc(me().name)}, HR BP / Recruiter.</strong> You can read all demands and add notes. Only the demand manager changes demands, candidates, and steps.</div>`;
+  if (r === 'mgmt') return `<div class="banner"><strong>${esc(me().name)}, Management.</strong> Read-only access. You see all demands but cannot change anything.</div>`;
+  if (r === 'lm') return `<div class="banner"><strong>${esc(me().name)}, Line manager.</strong> You see only the candidates and meetings where you are a participant. You can add your own feedback.</div>`;
+  return '';
+}
+
+/* ================= list view ================= */
+function filteredDemands() {
+  const q = ui.q.trim().toLowerCase();
+  const base = ui.filter === 'Deleted' ? S.demands.filter(d => d.deleted && role() === 'dm') : visibleDemands();
+  return base.filter(d => {
+    if (!['All', 'Deleted'].includes(ui.filter) && demandStatus(d) !== ui.filter) return false;
+    if (!q) return true;
+    return [d.id, d.extId, d.title, skillNames(d).join(' '), d.missing.join(' '), d.requestedBy, d.client, d.project].join(' ').toLowerCase().includes(q);
+  });
+}
+function rowHtml(d) {
+  const st = demandStatus(d), f = filledCount(d), cc = cancelledCount(d), days = daysFromToday(d.start);
+  const soon = !d.deleted && st === 'In progress' && f === 0 && days >= 0 && days <= 14;
+  const late = !d.deleted && st === 'In progress' && days < 0;
+  const active = d.candidates.filter(c => !c.closed).length;
+  return `<tr tabindex="0" class="${soon ? 'row-soon' : ''} ${ui.newRow === d.id ? 'row-new' : ''} ${d.deleted ? 'row-deleted' : ''}" data-act="open-demand" data-id="${d.id}" title="Open the candidates of ${d.id}">
+    <td><span class="mono strong">${d.id}</span><span class="sub mono">${esc(d.extId || 'No external ID')}</span></td>
+    <td><span class="strong">${esc(d.title)}</span><span class="sub">${esc([d.client, d.project].filter(Boolean).join(' · ') || 'No client')}</span></td>
+    <td><div class="chips">${d.skills.slice(0, 3).map(s => `<span class="chip ${s.must ? 'must' : ''}">${esc(s.name)}</span>`).join('')}${d.skills.length > 3 ? `<span class="chip more">+${d.skills.length - 3}</span>` : ''}${d.missing.length ? `<span class="chip miss" title="Not in the skill catalog: ${esc(d.missing.join(', '))}">+${d.missing.length} not in catalog</span>` : ''}</div></td>
+    <td>${esc(d.requestedBy)}</td>
+    <td>${miniBar(d)}<span class="sub">${f} filled · ${cc} cancelled · ${d.requested} requested</span></td>
+    <td class="num">${active}</td>
+    <td><span class="nowrap">${fmtD(d.start)}</span>${soon ? `<span class="flag warn">Starts in ${plural(days, 'day')}</span>` : ''}${late ? `<span class="flag bad">Start date passed</span>` : ''}</td>
+    <td>${d.deleted ? pill('Deleted', 'neutral') : pill(st, TONE_DEMAND[st])}</td>
+    <td class="nowrap">${esc(userName(d.owner))}</td>
+    <td class="act-cell">${role() === 'dm' ? kebab(d) : ''}</td>
+  </tr>`;
+}
+const kebab = d => `<button class="kebab" data-act="row-menu" data-id="${d.id}" aria-label="Actions for ${d.id}" aria-haspopup="menu" title="Actions">⋯</button>`;
+function rowsHtml() {
+  const rows = filteredDemands();
+  if (!rows.length) return `<tr><td colspan="10" class="empty">No demands match. Change the filter or the search text.</td></tr>`;
+  return rows.map(rowHtml).join('');
+}
+function renderList() {
+  const all = visibleDemands(); const counts = {};
+  all.forEach(d => { const s = demandStatus(d); counts[s] = (counts[s] || 0) + 1; });
+  const openPos = all.filter(d => demandStatus(d) === 'In progress').reduce((a, d) => a + openCount(d), 0);
+  const tabs = ['All', 'In progress', 'On hold', 'Completed', 'Cancelled', ...(role() === 'dm' ? ['Deleted'] : [])];
+  counts.Deleted = S.demands.filter(d => d.deleted).length;
+  return `<div class="page-head">
+      <div><h1>Demands</h1><p class="lede">${plural(counts['In progress'] || 0, 'demand')} in progress, ${plural(openPos, 'open position')}.</p></div>
+      ${isDM() ? `<button class="btn primary" data-act="new-demand">New demand</button>` : ''}
+    </div>
+    ${roleBanner()}
+    <div class="toolbar">
+      <div class="tabs" role="tablist" aria-label="Filter by status">${tabs.map(t => `<button role="tab" aria-selected="${ui.filter === t}" class="tab ${ui.filter === t ? 'on' : ''}" data-act="filter" data-v="${t}">${t} <span class="tab-n">${t === 'All' ? all.length : (counts[t] || 0)}</span></button>`).join('')}</div>
+      <div class="search"><label class="sr" for="q">Search demands</label><input id="q" class="inp" type="search" placeholder="Search ID, role, technology, client" value="${esc(ui.q)}"></div>
+    </div>
+    <div class="table-wrap"><table class="dt">
+      <thead><tr><th>Demand</th><th>Role</th><th>Skills</th><th>Requested by</th><th>Positions</th><th>Candidates</th><th>Start date</th><th>Status</th><th>Owner</th><th><span class="sr">Actions</span></th></tr></thead>
+      <tbody id="dt-body">${rowsHtml()}</tbody>
+    </table></div>
+    <p class="foot-note">Click a row to open its candidates. Use ⋯ for the demand details, edit, or delete. A yellow edge marks an in-progress demand that starts within 14 days and has no placement. Skills come from the Module 1 skill catalog. Bold skills are must-have skills.</p>`;
+}
+
+/* ================= detail view ================= */
+function headcountCard(d) {
+  const f = filledCount(d), cc = cancelledCount(d), o = openCount(d);
+  const inProc = d.candidates.filter(c => candStatus(c) === 'In process').length;
+  return `<section class="card hc" aria-label="Positions">
+    <div class="hc-nums">
+      <div><span class="n">${d.requested}</span><span class="l">requested</span></div>
+      <div class="is-ok"><span class="n">${f}</span><span class="l">filled</span></div>
+      <div><span class="n">${cc}</span><span class="l">cancelled</span></div>
+      <div class="is-open"><span class="n">${Math.max(0, o)}</span><span class="l">open</span></div>
+      <div><span class="n">${inProc}</span><span class="l">candidates in process</span></div>
+    </div>
+    <div class="posbar" role="img" aria-label="${f} filled, ${cc} cancelled, ${Math.max(0, o)} open, of ${d.requested} requested">${posArr(d).map(x => `<i class="p-${x}"></i>`).join('')}</div>
+    ${d.cancellations.length ? `<ul class="cxl">${d.cancellations.map(x => `<li><strong>${plural(x.count, 'position')} cancelled: ${esc(x.reason)}.</strong> ${esc(x.note || '')} ${esc(userName(x.by))}, ${fmtDT(x.at)}</li>`).join('')}</ul>` : ''}
+  </section>`;
+}
+function detailsCard(d) {
+  const rows = [
+    ['External ID', d.extId ? `<span class="mono">${esc(d.extId)}</span>` : 'Not set'],
+    ['Required skills', `<div class="chips">${d.skills.filter(s => !isLang(s.name)).map(skillChip).join('')}</div><p class="fhint" style="margin-top:4px">Module 1 skill catalog. Bold: must have.</p>${d.missing.length ? `<p class="fhint" style="margin-top:6px">Not in the catalog yet: ${missChips(d.missing)}</p>` : ''}`],
+    ['Languages', d.skills.some(s => isLang(s.name)) ? `<div class="chips">${d.skills.filter(s => isLang(s.name)).map(s => skillChip(s).replace(` · ${LEVELS[s.level]}<`, ` · ${LEVELS[s.level]} (${CEFR[s.level]})<`)).join('')}</div>` : 'Not set'],
+    ['Cost', `Max range code: ${esc(d.rangeCode || 'not set')}<br>Max daily rate: ${d.maxRate ? `${d.maxRate} EUR` : 'not set'}`],
+    ['Client', esc(d.client || 'Not set') + (findClient(d.client) ? ' <span class="muted" style="font-size:12px">(Module 2 client)</span>' : ' <span class="muted" style="font-size:12px">(not in Module 2)</span>')],
+    ['Seniority', esc(d.seniority || 'Not set')],
+    ['Allocation', `${d.allocation}% per person`],
+    ['Requested by', esc(d.requestedBy)],
+    ['Interviewer', esc(d.interviewer || 'Not set')],
+    ['Received', fmtD(d.received)],
+    ['Start date', fmtD(d.start)],
+    ['Wanted end', fmtD(d.end)],
+    ['Horizontal', esc(d.horizontal)],
+    ['Vertical', esc(d.vertical)],
+    ['Project', esc(d.project || 'Not set') + '<br><span class="muted" style="font-size:12px">Free text. No Module 2 project link.</span>'],
+  ];
+  return `<section class="card"><div class="card-h"><h3>Demand details</h3>${isDM() ? `<button class="btn small" data-act="edit-demand" data-id="${d.id}">Edit</button>` : ''}</div><dl class="dl">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>`;
+}
+function sourceCard(d, open) {
+  if (!d.source) return `<section class="card"><h3>Original request</h3><p class="muted" style="margin-top:8px">Created by hand. No original email.</p></section>`;
+  return `<section class="card"><details ${open ? 'open' : ''}><summary class="src-sum"><h3>Original request</h3><span class="muted">Show the email</span></summary><pre class="src">${esc(d.source)}</pre></details></section>`;
+}
+function historyCard(d) {
+  const list = [...d.history].reverse(); const shown = ui.histAll ? list : list.slice(0, 6);
+  return `<section class="card"><h3>History</h3><ul class="hist">${shown.map(h => `<li><span>${esc(h.text)}</span><span class="muted">${esc(userName(h.by))}, ${fmtDT(h.at)}</span></li>`).join('')}</ul>
+    ${list.length > 6 ? `<button class="link" style="margin-top:10px" data-act="hist-all">${ui.histAll ? 'Show fewer' : `Show all ${list.length} entries`}</button>` : ''}</section>`;
+}
+function notesBlock(scope, key, list, heading, candId) {
+  const add = canNote();
+  if (!list.length && !add) return '';
+  return `<div class="notes">${heading ? `<h3>${heading}</h3>` : ''}
+    ${list.length ? `<ul class="note-list">${list.map(n => `<li><div class="note-h"><strong>${esc(userName(n.by))}</strong><span class="muted">${fmtDT(n.at)}</span></div><p>${esc(n.text)}</p></li>`).join('')}</ul>` : ''}
+    ${add ? `<div class="note-add"><label class="sr" for="note-${scope}-${key}">Add a note</label><textarea id="note-${scope}-${key}" class="inp keep" rows="1" placeholder="Add a note"></textarea><button class="btn small" data-act="add-note" data-scope="${scope}" data-key="${key}" data-cand="${candId || ''}">Add note</button></div>` : ''}
+  </div>`;
+}
+
+function stepOptions(c) {
+  const hasCv = c.steps.some(s => s.type === 'cv');
+  if (!hasCv) return [{ type: 'cv', label: 'CV sent', enabled: true }];
+  const o = [{ type: 'meeting', label: 'Meeting', enabled: true }];
+  if (c.type === 'external') {
+    const openOffer = c.steps.some(s => s.type === 'offer' && ['Sent', 'Accepted'].includes(s.status));
+    o.push({ type: 'offer', label: 'Offer sent', enabled: !openOffer, why: 'An offer is already sent or accepted.' });
+  }
+  o.push({ type: 'custom', label: 'Custom step', enabled: true });
+  const okStart = c.type === 'internal' ? c.steps.some(s => s.type === 'meeting' && s.status === 'Done: positive') : c.steps.some(s => s.type === 'offer' && s.status === 'Accepted');
+  o.push({ type: 'start', label: 'Start date confirmed', enabled: okStart, why: c.type === 'internal' ? 'Needs a meeting with the status "Done: positive".' : 'Needs an offer with the status "Accepted".' });
+  return o;
+}
+function addStepBar(c) {
+  const opts = stepOptions(c);
+  const why = opts.filter(o => !o.enabled && o.why);
+  return `<div><div class="addbar"><span class="addbar-l">Add step</span>${opts.map(o => `<button class="btn small" data-act="add-step-type" data-cand="${c.id}" data-type="${o.type}" ${o.enabled ? '' : 'disabled'}>${o.label}</button>`).join('')}</div>
+    ${why.map(o => `<p class="why">${o.label}: ${o.why}</p>`).join('')}
+    ${!c.steps.length ? `<p class="why">The first step is always "CV sent". The other steps become available after it.</p>` : ''}</div>`;
+}
+function stepForm(d, c) {
+  const a = ui.addStep, v = a.vals || {};
+  const date = (id, val, label) => `<div class="field"><label for="${id}">${label}</label><input id="${id}" class="inp" type="date" value="${esc(val)}"></div>`;
+  const text = (id, val, label, ph = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" class="inp" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
+  const note = `<div class="field wide"><label for="s-note">Note <span class="muted">(optional)</span></label><textarea id="s-note" class="inp" rows="2"></textarea></div>`;
+  let title = '', body = '';
+  if (a.type === 'cv') {
+    title = 'Add step: CV sent';
+    body = `<div class="fgrid">${date('s-date', rel(0), 'Date sent')}${text('s-to', d.interviewer || d.requestedBy, 'Sent to')}${note}</div>`;
+  } else if (a.type === 'meeting') {
+    const preset = c.type === 'internal' ? EMP[c.empId].lm : null;
+    title = 'Add step: Meeting';
+    body = `<div class="fgrid">
+      <div class="field"><label for="s-kind">Kind of meeting</label><select id="s-kind" class="inp">${MEETING_KINDS.map(k => `<option>${k}</option>`).join('')}</select></div>
+      <div class="field"><label for="s-when">Date and time</label><input id="s-when" class="inp" type="datetime-local" value="${rel(1)}T10:00"></div>
+      <div class="field wide"><span style="font-size:13px;font-weight:500">Participants with system access</span><div class="checks">${PARTICIPANT_USERS.map(u => `<label><input type="checkbox" name="s-part" value="${u}" ${u === preset ? 'checked' : ''}> ${esc(USERS[u].name)} <span class="muted">${esc(USERS[u].roleLabel)}</span></label>`).join('')}</div><p class="fhint">These users get a notification and can add their own feedback.</p></div>
+      ${text('s-ext', d.interviewer ? `${d.interviewer} (client)` : '', 'External participants', 'Names, separated by commas')}
+      ${note}</div>`;
+  } else if (a.type === 'offer') {
+    title = 'Add step: Offer sent';
+    body = `<div class="fgrid">${date('s-date', rel(0), 'Date sent')}${note}</div><p class="fhint">Only for external candidates. The recruiters send the offer. The system records only the status.</p>`;
+  } else if (a.type === 'custom') {
+    title = 'Add step: Custom step';
+    body = `<div class="fgrid">${text('s-title', '', 'Step name', 'For example: Security clearance')}${date('s-date', rel(0), 'Date')}${note}</div>`;
+  } else if (a.type === 'start') {
+    title = 'Add step: Start date confirmed';
+    const o = openCount(d);
+    body = `<div class="fgrid">${date('s-start', v.start || (daysFromToday(d.start) >= 0 ? d.start : rel(7)), 'Start date')}
+      <div class="field"><label for="s-pct">Allocation %</label><input id="s-pct" class="inp" type="number" min="1" max="100" step="5" value="${esc(v.pct || d.allocation)}"></div></div>
+      <p class="fhint">${plural(Math.max(0, o), 'open position')} on this demand. This step fills one position.${c.type === 'internal' ? ' After the save, the Module 2 "Create allocation" form opens, already filled in.' : ''}</p>
+      ${a.warn ? `<div class="warnbox"><p><strong>Over 100% allocation.</strong> ${esc(nameOf(c))} is at ${a.warn.now}% now. With this placement, the total is ${a.warn.total}%. You can still confirm. The system does not block it.</p><div class="row"><button class="btn small primary" data-act="start-confirm-anyway">Confirm anyway</button></div></div>` : ''}`;
+  }
+  return `<div class="stepform"><h4>${title}</h4>${body}<p class="err" id="s-err" hidden></p>
+    <div class="row"><button class="btn small primary" data-act="add-step-save">Save step</button><button class="btn small ghost" data-act="add-step-cancel">Cancel</button></div></div>`;
+}
+function partsView(d, c, s, locked) {
+  const items = s.participants.map(p => {
+    if (p.name) return `<li class="part"><span class="avatar sm ext">${esc(initials(p.name))}</span><div class="part-b"><div><strong>${esc(p.name)}</strong></div><span class="muted">External participant. No system access.</span></div></li>`;
+    const u = USERS[p.userId]; const mine = p.userId === S.me;
+    let fb;
+    if (p.verdict) fb = `<div class="fb">${pill(cap(p.verdict), p.verdict === 'positive' ? 'ok' : p.verdict === 'negative' ? 'bad' : 'neutral')}<p>${esc(p.feedback)}</p><span class="muted">${fmtDT(p.at)}</span></div>`;
+    else if (mine && s.status !== 'Cancelled') fb = `<div class="fb-form"><fieldset><legend>Your feedback</legend>${['positive', 'neutral', 'negative'].map(x => `<label><input type="radio" name="fbv-${p.id}" value="${x}"> ${cap(x)}</label>`).join('')}</fieldset>
+        <label class="sr" for="fbt-${p.id}">Feedback</label><textarea id="fbt-${p.id}" class="inp keep" rows="2" placeholder="What went well? What is missing?"></textarea><p class="err" id="fbe-${p.id}" hidden></p>
+        <div><button class="btn small primary" data-act="give-feedback" data-cand="${c.id}" data-step="${s.id}" data-part="${p.id}">Save feedback</button></div></div>`;
+    else fb = `<span class="muted">${s.status === 'Scheduled' ? 'Feedback after the meeting.' : 'No feedback yet.'}</span>`;
+    return `<li class="part"><span class="avatar sm">${esc(initials(u.name))}</span><div class="part-b"><div><strong>${esc(u.name)}</strong> <span class="muted">${esc(u.roleLabel)}</span></div>${fb}</div></li>`;
+  }).join('');
+  const pending = s.participants.some(p => p.userId && !p.verdict);
+  const avail = PARTICIPANT_USERS.filter(u => !s.participants.some(p => p.userId === u));
+  const add = isDM() && !locked ? `<div class="addpart"><label class="sr" for="apu-${s.id}">Add a system user</label><select id="apu-${s.id}" class="inp"><option value="">Add a system user</option>${avail.map(u => `<option value="${u}">${esc(USERS[u].name)}, ${esc(USERS[u].roleLabel)}</option>`).join('')}</select>
+      <label class="sr" for="apn-${s.id}">External name</label><input id="apn-${s.id}" class="inp keep" placeholder="Or type an external name"><button class="btn small" data-act="add-participant" data-cand="${c.id}" data-step="${s.id}">Add</button></div>` : '';
+  return `<div class="parts"><h5>Participants</h5><ul>${items}</ul>${add}
+    ${isDM() && pending ? `<p class="hint">To try the feedback, switch "View as" to a participant.</p>` : ''}</div>`;
+}
+function stepView(d, c, s) {
+  const locked = !!c.closed || isPlaced(c);
+  const shown = ui.neg && ui.neg.stepId === s.id ? ui.neg.status : s.status;
+  const tone = toneStep(shown);
+  const editable = isDM() && s.type !== 'start' && !locked;
+  const statusUI = editable
+    ? `<select class="inp sel-status t-${tone}" data-change="step-status" data-cand="${c.id}" data-step="${s.id}" aria-label="Status of ${esc(stepTitle(s))}">${STATUSES[s.type].map(x => `<option ${x === shown ? 'selected' : ''}>${x}</option>`).join('')}</select>`
+    : pill(s.status, toneStep(s.status));
+  const kind = { cv: 'First step', meeting: 'Meeting', offer: 'Offer, external only', custom: 'Custom step', start: 'Final step' }[s.type];
+  const meta = {
+    cv: () => `Sent ${fmtD(s.date)}${s.sentTo ? ` to ${esc(s.sentTo)}` : ''} · by ${esc(userName(s.by))}`,
+    meeting: () => `${fmtWhen(s.when)} · organized by ${esc(userName(s.by))}`,
+    offer: () => `Sent ${fmtD(s.date)} · by ${esc(userName(s.by))}`,
+    custom: () => `${fmtD(s.date)} · by ${esc(userName(s.by))}`,
+    start: () => `Start date ${fmtD(s.startDate)} · ${s.pct}% allocation · confirmed by ${esc(userName(s.by))}`,
+  }[s.type]();
+  let changes = '';
+  if (s.changes.length > 1) {
+    const days = Math.max(0, Math.round((new Date(s.changes[s.changes.length - 1].at) - new Date(s.changes[0].at)) / 864e5));
+    changes = `<p class="changes">${s.changes.map(x => `<b>${esc(x.status)}</b> ${fmtShort(x.at)}`).join(' → ')}<span class="dur">${plural(days, 'day')}</span></p>`;
+  }
+  const neg = ui.neg && ui.neg.stepId === s.id ? `<div class="negbox"><p><strong>${esc(ui.neg.status)}</strong> needs a reason. The reason is saved as a note.</p>
+      <label class="sr" for="neg-reason">Reason</label><textarea id="neg-reason" class="inp" rows="2" placeholder="Why?"></textarea><p class="err" id="neg-err" hidden></p>
+      <div class="row"><button class="btn small" data-act="neg-keep">Save and keep the flow open</button><button class="btn small danger" data-act="neg-reject">Save and reject the candidate</button><button class="btn small ghost" data-act="neg-cancel">Cancel</button></div></div>` : '';
+  return `<li class="step t-${toneStep(s.status)}"><span class="dot" aria-hidden="true"></span><div class="step-card">
+    <div class="step-top"><div><span class="step-kind">${kind}</span><h4>${esc(stepTitle(s))}</h4></div>${statusUI}</div>
+    <p class="step-meta">${meta}</p>${changes}
+    ${s.type === 'meeting' ? partsView(d, c, s, locked) : ''}
+    ${neg}
+    ${role() === 'lm' ? '' : notesBlock('step', s.id, s.notes, null, c.id)}
+  </div></li>`;
+}
+function candBody(d, c) {
+  const lm = role() === 'lm';
+  const facts = c.type === 'internal'
+    ? [['Type', 'Internal employee'], ['Job title', esc(EMP[c.empId].title)], ['Availability (Module 2)', esc(freeInfo(c.empId).text)], ['Line manager', esc(userName(EMP[c.empId].lm))], ['Source', esc(c.source)],
+       ['Skills for this demand (Module 1)', `<span class="chips">${fitChips(c.empId, d)}</span>`]]
+    : [['Type', 'External'], ['Email', esc(c.ext.email || 'Not given')], ['Recruiter', esc(userName(c.ext.recruiter))], ['Source', esc(c.source)]];
+  const cf = costFit(d, c);
+  facts.push([c.type === 'internal' ? 'Cost (Module 2 range code)' : 'Expected daily rate', cf ? `${esc(cf.text)}${cf.over ? '<br><span class="err" style="font-size:12px">Above the budget of the demand. Add a note that explains the exception.</span>' : ''}` : '<span class="muted">Not known</span>']);
+  const steps = lm ? c.steps.filter(s => s.type === 'meeting' && s.participants.some(p => p.userId === S.me)) : c.steps;
+  const active = !c.closed && !isPlaced(c);
+  return `<div class="cand-body">
+    <dl class="facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${c.closed ? `<div class="closed-box ${c.closed.status === 'Rejected' ? 'banner t-bad-b' : 'banner'}"><strong>${esc(c.closed.status)}.</strong> ${esc(c.closed.reason)} <span class="muted">${esc(userName(c.closed.by))}, ${fmtDT(c.closed.at)}</span></div>` : ''}
+    ${isPlaced(c) ? `<div class="closed-box banner t-ok-b"><strong>Placed.</strong> This candidate fills one position.${c.type !== 'internal' ? ' The person gets an employee record when Module 2 imports them from Workday.' : (c.inM2 || c.allocCreated ? ' The Module 2 allocation exists.' : (isDM() ? ` <button class="link" data-act="open-alloc" data-cand="${c.id}">Create the allocation in Module 2</button>` : ' No Module 2 allocation yet.'))}</div>` : ''}
+    <div>
+      <div class="flow-h"><h3>${lm ? 'Your meetings' : 'Flow'}</h3><span class="muted">${plural(steps.length, 'step')}</span></div>
+      ${steps.length ? `<ol class="flow" style="margin-top:10px">${steps.map(s => stepView(d, c, s)).join('')}</ol>` : `<div class="empty-flow" style="margin-top:10px">No steps yet. The first step is always "CV sent".</div>`}
+    </div>
+    ${isDM() && active ? addStepBar(c) : ''}
+    ${ui.addStep && ui.addStep.candId === c.id ? stepForm(d, c) : ''}
+    ${isDM() && active ? `<div class="cand-act"><button class="btn small ghost-bad" data-act="cand-close" data-cand="${c.id}" data-status="Rejected">Reject candidate</button><button class="btn small ghost" data-act="cand-close" data-cand="${c.id}" data-status="Withdrawn">Withdraw candidate</button></div>` : ''}
+    ${lm ? '' : notesBlock('cand', c.id, c.notes, 'Candidate notes', c.id)}
+  </div>`;
+}
+function candRow(d, c) {
+  const open = ui.open.has(c.id), st = candStatus(c), name = nameOf(c);
+  const sub = c.type === 'internal' ? `Internal · ${EMP[c.empId].title}` : `External · recruiter ${userName(c.ext.recruiter)}`;
+  const others = role() === 'lm' ? [] : otherActive(d, c);
+  const placedElsewhere = others.filter(x => isPlaced(x.c));
+  const flags = [];
+  if (others.length) flags.push(`<button class="badge-btn" data-act="toggle-multi" data-cand="${c.id}" aria-expanded="${ui.multi.has(c.id)}">Also on ${plural(others.length, 'other demand')}</button>`);
+  placedElsewhere.forEach(x => { const s = x.c.steps.find(t => t.type === 'start'); flags.push(`<span class="badge-warn">Placed on ${x.d.id} at ${s.pct}%</span>`); });
+  const cf = costFit(d, c); if (cf && cf.over && !c.closed) flags.push(`<span class="badge-warn" title="${esc(cf.text)}">Above budget</span>`);
+  return `<article class="cand ${open ? 'open' : ''}">
+    <button class="cand-head" data-act="toggle-cand" data-cand="${c.id}" aria-expanded="${open}">
+      <span class="avatar ${c.type === 'external' ? 'ext' : ''}">${esc(initials(name))}</span>
+      <span class="cand-name"><strong>${esc(name)}</strong><span class="sub">${esc(sub)}</span></span>
+      <span class="cand-step">${esc(currentStepLabel(c))}</span>
+      ${pill(st, TONE_CAND[st])}
+      <span class="chev" aria-hidden="true"></span>
+    </button>
+    ${flags.length ? `<div class="cand-flags">${flags.join('')}</div>` : ''}
+    ${ui.multi.has(c.id) ? `<ul class="multi-list">${others.map(x => `<li><button class="link" data-act="open-demand" data-id="${x.d.id}">${x.d.id}</button> ${esc(x.d.title)}: ${esc(currentStepLabel(x.c))}</li>`).join('')}</ul>` : ''}
+    ${open ? candBody(d, c) : ''}
+  </article>`;
+}
+function renderDetail() {
+  const d = curD();
+  if (!d || !visibleDemands(true).includes(d)) { ui.view = 'list'; return renderList(); }
+  const st = demandStatus(d), o = openCount(d), lm = role() === 'lm';
+  const stPill = d.deleted ? pill('Deleted', 'neutral') : pill(st, TONE_DEMAND[st]);
+  const cands = visibleCands(d);
+  return `<nav class="crumbs" aria-label="Breadcrumb"><button class="link" data-act="go-list">Demands</button><span>/</span><span class="mono">${d.id}</span></nav>
+    ${roleBanner()}
+    <header class="dhead">
+      <div class="dhead-main">
+        <div class="eyebrow mono">${d.id}${d.extId ? ` · ${esc(d.extId)}` : ''}</div>
+        <h1>${esc(d.title)}</h1>
+        <div class="meta-row">${stPill}<span>${esc(d.client || 'No client')}</span><span>${esc(d.project || 'Project not named')}</span><span>Start date ${fmtD(d.start)}</span><span>Owner ${esc(userName(d.owner))}</span></div>
+      </div>
+      ${isDM() ? `<div class="dhead-act">
+        <button class="btn" data-act="edit-demand" data-id="${d.id}">Edit demand</button>
+        ${o > 0 ? `<button class="btn" data-act="open-cancel-pos">Cancel positions</button>` : ''}
+        <button class="btn" data-act="open-add-pos">Add positions</button>
+        ${d.onHold ? `<button class="btn" data-act="resume">Resume</button>` : (st === 'In progress' ? `<button class="btn" data-act="open-hold">Put on hold</button>` : '')}
+        ${kebab(d)}
+      </div>` : ''}
+    </header>
+    ${d.deleted ? `<div class="banner t-bad-b"><strong>Deleted.</strong> ${esc(d.deleted.reason)} <span class="muted">${esc(userName(d.deleted.by))}, ${fmtDT(d.deleted.at)}</span>${role() === 'dm' ? ` <button class="link" data-act="restore-demand" data-id="${d.id}">Restore the demand</button>` : ''}</div>` : ''}
+    ${d.onHold ? `<div class="banner t-warn-b"><strong>On hold.</strong> ${esc(d.onHold.reason)} <span class="muted">${esc(userName(d.onHold.by))}, ${fmtDT(d.onHold.at)}</span></div>` : ''}
+    <div class="subtabs" role="tablist" aria-label="Demand pages">
+      <button role="tab" class="subtab ${ui.tab === 'candidates' ? 'on' : ''}" aria-selected="${ui.tab === 'candidates'}" data-act="dtab" data-v="candidates">Candidates <span class="count">${cands.length}</span></button>
+      <button role="tab" class="subtab ${ui.tab === 'details' ? 'on' : ''}" aria-selected="${ui.tab === 'details'}" data-act="dtab" data-v="details">Demand details and history</button>
+    </div>
+    ${ui.tab === 'details' ? detailsPage(d) : candidatesPage(d, cands)}`;
+}
+function candidatesPage(d, cands) {
+  return `${role() === 'lm' ? '' : headcountCard(d)}
+    <section aria-labelledby="cands-h">
+      <div class="sec-h"><h2 id="cands-h">Candidates <span class="count">${cands.length}</span></h2>
+        ${isDM() ? `<div class="sec-act"><button class="btn small" data-act="open-find">Find candidates <span class="tag-mock">M04 mock</span></button><button class="btn small" data-act="open-add-ext">Add external candidate</button></div>` : ''}</div>
+      <p class="sec-sub">Open a candidate to see the flow. The flow starts with "CV sent". After that, add the steps that this case needs.</p>
+      ${cands.length ? `<div class="cand-list">${cands.map(c => candRow(d, c)).join('')}</div>` : `<div class="empty-box">No candidates yet. Use "Find candidates" for internal people, or add an external candidate from a recruiter.</div>`}
+    </section>`;
+}
+function editCard() {
+  const dr = ui.draft;
+  return `<section class="card" aria-labelledby="edit-h"><div class="card-h"><h3 id="edit-h">Edit demand details</h3></div>
+    <p class="muted" style="margin-top:6px">The history records each changed field with the old and the new value. Candidates and positions do not change here.</p>
+    <div class="fgrid">${FIELDS.filter(f => f.k !== 'notes').map(fieldView).join('')}</div>
+    ${dr.errors.length ? `<div class="errbox" style="margin-top:12px"><strong>Cannot save.</strong> ${dr.errors.map(esc).join(' ')}</div>` : ''}
+    ${dr.dup ? `<div class="errbox" style="margin-top:12px;background:var(--warn-soft)"><strong style="color:var(--warn)">Possible duplicate.</strong> ${esc(dr.dup)} already uses this external ID. <button class="link" data-act="save-anyway">Save anyway</button></div>` : ''}
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-act="cancel-edit">Cancel</button><button class="btn primary" data-act="save-demand">Save changes</button></div>
+  </section>`;
+}
+function detailsPage(d) {
+  const editing = ui.draft && ui.draft.mode === 'edit' && ui.draft.demandId === d.id;
+  const left = editing ? editCard() : detailsCard(d);
+  if (role() === 'lm') return `<div class="dpage"><div class="dcol">${left}</div></div>`;
+  const notes = `<section class="card">${notesBlock('demand', d.id, d.notes, 'Demand notes') || '<h3>Demand notes</h3><p class="muted" style="margin-top:8px">No notes.</p>'}<p class="hint" style="margin-top:8px">Notes cannot be changed or deleted.</p></section>`;
+  return `<div class="dpage"><div class="dcol">${left}${notes}</div><div class="dcol">${historyCard(d)}${sourceCard(d, true)}</div></div>`;
+}
+function renderNoAccess() {
+  return `<div class="page-head"><div><h1>Demands</h1></div></div>
+    <div class="empty-box" style="text-align:left"><strong style="color:var(--fg)">You do not have access to demands.</strong><p style="margin-top:6px">Employees have no access to Module 3. Switch "View as" in the top bar to another user.</p></div>`;
+}
+
+/* ================= new-demand drawer ================= */
+const FIELDS = [
+  { k: 'extId', label: 'External ID', hint: 'ID from the Italian demand application.' },
+  { k: 'title', label: 'Role / title', req: true },
+  { k: 'skills', label: 'Required skills (Module 1 skill catalog)', req: true, type: 'skills', wide: true },
+  { k: 'langs', label: 'Required languages (Module 1 skill catalog)', type: 'langs', wide: true },
+  { k: 'seniority', label: 'Seniority' },
+  { k: 'requested', label: 'Number of people', req: true, type: 'number', min: 1, max: 50 },
+  { k: 'allocation', label: 'Allocation % per person', req: true, type: 'number', min: 5, max: 100 },
+  { k: 'rangeCode', label: 'Max cost range code', type: 'select', options: RANGE_CODES, hint: 'Module 2 workforce cost code. Internal candidates above this code show "Above budget".' },
+  { k: 'maxRate', label: 'Max daily rate (EUR)', type: 'number', min: 0, max: 5000, hint: 'External candidates above this rate show "Above budget".' },
+  { k: 'requestedBy', label: 'Requested by', req: true },
+  { k: 'interviewer', label: 'Interviewer' },
+  { k: 'received', label: 'Date received', req: true, type: 'date' },
+  { k: 'start', label: 'Start date', req: true, type: 'date' },
+  { k: 'end', label: 'End date', type: 'date' },
+  { k: 'horizontal', label: 'Horizontal (Module 2)', req: true, type: 'select', options: HORIZ },
+  { k: 'client', label: 'Client (Module 2)', type: 'client', hint: 'Select an existing Module 2 client. Its vertical fills automatically.' },
+  { k: 'vertical', label: 'Vertical (Module 2)', req: true, type: 'select', options: VERT },
+  { k: 'project', label: 'Project', hint: 'Free text. Most demands are for new projects.' },
+  { k: 'notes', label: 'Notes', type: 'textarea', wide: true },
+];
+const LABELS = {
+  'request id': 'extId', 'demand id': 'extId', 'id': 'extId',
+  'role': 'title', 'position': 'title', 'profile': 'title', 'title': 'title',
+  'technologies': 'tech', 'technology': 'tech', 'skills': 'tech', 'tech stack': 'tech',
+  'languages': 'langs', 'language': 'langs',
+  'max range': 'rangeCode', 'range code': 'rangeCode', 'cost range': 'rangeCode', 'range': 'rangeCode',
+  'max daily rate': 'maxRate', 'daily rate': 'maxRate', 'max rate': 'maxRate', 'budget': 'maxRate',
+  'seniority': 'seniority', 'level': 'seniority',
+  'number of resources': 'requested', 'resources': 'requested', 'headcount': 'requested', 'number of people': 'requested',
+  'allocation': 'allocation', 'allocation %': 'allocation',
+  'requested by': 'requestedBy', 'requester': 'requestedBy', 'project manager': 'requestedBy', 'pm': 'requestedBy',
+  'interviewer': 'interviewer', 'interview by': 'interviewer',
+  'client': 'client', 'customer': 'client',
+  'project': 'project', 'project name': 'project',
+  'horizontal': 'horizontal', 'business unit': 'horizontal',
+  'vertical': 'vertical', 'market': 'vertical', 'sector': 'vertical',
+  'start date': 'start', 'wanted start date': 'start', 'desired start date': 'start', 'start': 'start',
+  'end date': 'end', 'wanted end date': 'end', 'desired end date': 'end', 'end': 'end',
+  'date': 'received', 'received': 'received', 'opened on': 'received',
+  'notes': 'notes', 'note': 'notes', 'additional information': 'notes',
+};
+function parseDate(v) {
+  let m = v.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  m = v.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/); if (m) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`;
+  return null;
+}
+function matchOption(val, options) {
+  const norm = s => s.toLowerCase().replace(/\s*\/\s*/g, '/').trim();
+  const v = norm(val);
+  return options.find(o => norm(o) === v) || options.find(o => norm(o).endsWith(v)) || options.find(o => norm(o).split('/').pop() === v.split('/').pop()) || null;
+}
+function parseEmail(text) {
+  const t = text.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  const out = {}, unmatched = {};
+  for (const line of t.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z][A-Za-z %\/]{0,30}?)\s*:\s*(.+?)\s*$/); if (!m) continue;
+    const f = LABELS[m[1].toLowerCase().trim()]; if (!f || out[f] !== undefined) continue;
+    const v = m[2];
+    if (f === 'tech') out.tech = v.split(/[,;]/).map(x => x.trim()).filter(Boolean).join(', ');
+    else if (f === 'rangeCode') { const r = RANGE_CODES.find(x => x.toLowerCase() === v.trim().toLowerCase()); if (r) out.rangeCode = r; else unmatched.rangeCode = v; }
+    else if (f === 'requested' || f === 'allocation' || f === 'maxRate') { const n = parseInt(v.replace(/[^\d]/g, ''), 10); if (!isNaN(n)) out[f] = String(n); }
+    else if (['start', 'end', 'received'].includes(f)) { const dd = parseDate(v); if (dd) out[f] = dd; }
+    else if (f === 'horizontal' || f === 'vertical') { const hit = matchOption(v, f === 'horizontal' ? HORIZ : VERT); if (hit) out[f] = hit; else unmatched[f] = v; }
+    else out[f] = v;
+  }
+  const subj = t.match(/^\s*Subject:\s*(.+)$/mi);
+  if (subj) {
+    if (out.extId === undefined) { const r = subj[1].match(/\b([A-Z]{2,5}-\d{4}-\d{3,6})\b/); if (r) out.extId = r[1]; }
+    if (out.title === undefined) { const parts = subj[1].split(/\s+-\s+/); if (parts.length > 1) out.title = parts.slice(1).join(' - ').trim(); }
+  }
+  return { out, unmatched };
+}
+const defaults = () => ({ extId: '', title: '', skills: [], missing: [], seniority: '', requested: '1', allocation: '100', rangeCode: '', maxRate: '', requestedBy: '', interviewer: '', received: rel(0), start: '', end: '', horizontal: '', vertical: '', client: '', project: '', notes: '' });
+const newDraft = () => ({ mode: 'new', values: defaults(), auto: new Set(), unmatched: {}, text: '', source: '', sourceLabel: '', parsedCount: null, showMissing: false, errors: [], dup: null });
+function editDraft(d) {
+  const values = { extId: d.extId, title: d.title, skills: d.skills.map(s => ({ ...s })), missing: [...d.missing], seniority: d.seniority, requested: String(d.requested), allocation: String(d.allocation), rangeCode: d.rangeCode || '', maxRate: d.maxRate ? String(d.maxRate) : '', requestedBy: d.requestedBy, interviewer: d.interviewer, received: d.received, start: d.start, end: d.end || '', horizontal: d.horizontal, vertical: d.vertical, client: d.client, project: d.project, notes: '' };
+  return Object.assign(newDraft(), { mode: 'edit', demandId: d.id, values });
+}
+const splitTech = v => String(v || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
+
+function readSource(text, label) {
+  const dr = ui.draft; if (!dr) return;
+  const { out, unmatched } = parseEmail(text);
+  const vals = Object.assign(defaults(), out);
+  const auto = new Set(Object.keys(out).filter(k => String(out[k]).trim()));
+  if (out.tech !== undefined) {
+    const lvl = SENIORITY_LEVEL[String(out.seniority || '').toLowerCase()] || null;
+    splitTech(out.tech).forEach(n => {
+      const s = catalogSkill(n);
+      if (s) { if (!vals.skills.some(x => x.name === s.name)) vals.skills.push({ name: s.name, level: s.cat === 'Technical' ? lvl : null, must: true }); }
+      else if (!vals.missing.includes(n)) vals.missing.push(n);
+    });
+    delete vals.tech; auto.delete('tech'); if (vals.skills.some(s => !isLang(s.name))) auto.add('skills');
+  }
+  if (out.langs !== undefined) {
+    splitTech(out.langs).forEach(item => {
+      const m = item.match(/^(.+?)\s*(?:\(([^)]+)\))?$/), name = m[1].trim(), lv = String(m[2] || '').trim().toLowerCase();
+      if (name.toLowerCase() === 'none') return;
+      const level = CEFR_LEVEL[lv] || (LEVELS.findIndex(l => l && l.toLowerCase() === lv) > 0 ? LEVELS.findIndex(l => l && l.toLowerCase() === lv) : null);
+      const s = catalogSkill(name);
+      if (s && s.cat === 'Languages') { const ex = vals.skills.find(x => x.name === s.name); if (ex) ex.level = level || ex.level; else vals.skills.push({ name: s.name, level, must: true }); }
+      else if (!vals.missing.includes(name)) vals.missing.push(name);
+    });
+    delete vals.langs; auto.delete('langs'); if (vals.skills.some(s => isLang(s.name))) auto.add('langs');
+  }
+  dr.fromClient = false;
+  const cl = findClient(vals.client);
+  if (cl && !vals.vertical) { vals.vertical = cl.vertical; auto.add('vertical'); dr.fromClient = true; }
+  dr.values = vals; dr.auto = auto; dr.skillReq = false;
+  dr.unmatched = unmatched; dr.text = text; dr.source = text; dr.sourceLabel = label;
+  dr.parsedCount = dr.auto.size; dr.showMissing = true; dr.errors = []; dr.dup = null;
+  render();
+  toast(dr.parsedCount ? `Autofill filled ${plural(dr.parsedCount, 'field')}. Check the highlighted fields.` : 'Autofill found no labelled lines. Fill the form by hand.');
+}
+function fieldView(f) {
+  const dr = ui.draft, v = dr.values[f.k] ?? '';
+  const auto = dr.auto.has(f.k), miss = dr.showMissing && f.req && (f.type === 'skills' ? !dr.values.skills.some(s => !isLang(s.name)) : !String(v).trim()), un = dr.unmatched[f.k];
+  const id = `f-${f.k}`, attrs = `id="${id}" class="inp" data-field="${f.k}"`;
+  const locked = dr.mode === 'edit' && f.k === 'requested';
+  const hint = locked ? 'Use "Add positions" or "Cancel positions" on the demand page. They record the reason.' : f.hint;
+  let ctl;
+  if (f.type === 'skills' || f.type === 'langs') ctl = skillPicker(dr, f.type);
+  else if (f.type === 'client') ctl = `<input ${attrs} list="clients-dl" value="${esc(v)}" autocomplete="off"><datalist id="clients-dl">${CLIENTS.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>`;
+  else if (f.type === 'select') ctl = `<select ${attrs}><option value="">Select</option>${f.options.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  else if (f.type === 'textarea') ctl = `<textarea ${attrs} rows="2">${esc(v)}</textarea>`;
+  else if (f.type === 'number') ctl = `<input ${attrs} type="number" min="${f.min}" max="${f.max}" value="${esc(v)}" ${locked ? 'disabled' : ''}>`;
+  else if (f.type === 'date') ctl = `<input ${attrs} type="date" value="${esc(v)}">`;
+  else ctl = `<input ${attrs} value="${esc(v)}">`;
+  const fromClient = f.k === 'vertical' && dr.fromClient;
+  return `<div class="field ${f.wide ? 'wide' : ''} ${auto ? 'auto' : ''} ${miss ? 'miss' : ''}">
+    <label for="${f.type === 'skills' || f.type === 'langs' ? `sk-add-${f.type}` : id}">${f.label}${f.req ? ' <span class="req" aria-hidden="true">*</span>' : ''}${auto ? `<span class="tag-auto">${fromClient ? 'From the Module 2 client' : 'From email'}</span>` : ''}</label>
+    ${ctl}
+    ${miss ? `<p class="fmsg bad">${dr.parsedCount !== null ? 'Not found in the email. Fill this field.' : 'Required.'}</p>` : ''}
+    ${un && !v ? `<p class="fmsg warn">The email says "${esc(un)}". Select the matching value.</p>` : ''}
+    ${hint ? `<p class="fhint">${hint}</p>` : ''}
+  </div>`;
+}
+function skillPicker(dr, kind = 'skills') {
+  const langs = kind === 'langs';
+  const cats = [...new Set(CATALOG.map(s => s.cat))].filter(c => (c === 'Languages') === langs);
+  const taken = new Set(dr.values.skills.map(s => s.name));
+  const lvlOpts = sel => LEVELS.map((l, i) => `<option value="${i || ''}" ${(sel || 0) === i ? 'selected' : ''}>${l ? (langs ? `${l} (${CEFR[i]})` : l) : 'Any level'}</option>`).join('');
+  const rows = dr.values.skills.map((s, i) => ({ s, i })).filter(x => isLang(x.s.name) === langs);
+  const list = rows.length
+    ? `<ul class="sklist">${rows.map(({ s, i }) => `<li>
+        <span class="sk-name"><strong>${esc(s.name)}</strong><span class="muted">${esc(catalogSkill(s.name).cat)}</span></span>
+        <label class="sr" for="skl-${i}">Level for ${esc(s.name)}</label><select id="skl-${i}" class="inp" data-change="sk-level" data-i="${i}">${lvlOpts(s.level)}</select>
+        <label class="ck"><input type="checkbox" data-change="sk-must" data-i="${i}" ${s.must ? 'checked' : ''}> Must have</label>
+        <button class="link" data-act="sk-remove" data-i="${i}" aria-label="Remove ${esc(s.name)}">Remove</button></li>`).join('')}</ul>`
+    : `<p class="muted" style="font-size:13px">${langs ? 'No languages yet.' : 'No skills yet. Add skills from the catalog.'}</p>`;
+  return `<div class="skillpick">${list}
+    <div class="skadd"><select id="sk-add-${kind}" class="inp"><option value="">${langs ? 'Select a language from the catalog' : 'Select a skill from the catalog'}</option>${cats.map(c => `<optgroup label="${esc(c)}">${CATALOG.filter(s => s.cat === c && !taken.has(s.name)).map(s => `<option>${esc(s.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <label class="sr" for="sk-lvl-${kind}">Level</label><select id="sk-lvl-${kind}" class="inp">${lvlOpts(3)}</select>
+      <button class="btn small" data-act="sk-add" data-kind="${kind}">${langs ? 'Add language' : 'Add skill'}</button></div>
+    <p class="fhint">${langs ? 'Languages are skills in the "Languages" category of Module 1, with the same levels. Autofill reads CEFR levels from the email: B1 = Intermediate, B2 = Experienced, C1 = Advanced, C2 = Master.' : 'Levels are the Module 1 knowledge levels. Autofill sets the level of technical skills from the seniority (Senior = Advanced).'}</p>
+    ${!langs && dr.values.missing.length ? `<div class="warnbox"><p><strong>Not in the skill catalog:</strong> <span class="chips" style="display:inline-flex">${missChips(dr.values.missing)}</span></p>
+      <p class="fhint">The demand cannot match on these skills until the admin adds them on the Skills page (Module 1). The demand keeps them as requested skills.</p>
+      <div class="row">${dr.skillReq ? pill('Request sent to the admin', 'ok') : `<button class="btn small" data-act="sk-request">Ask the admin to add them</button>`}<button class="btn small ghost" data-act="sk-clear-missing">Ignore them</button></div></div>` : ''}
+  </div>`;
+}
+function renderDrawer() {
+  const dr = ui.draft, edit = dr.mode === 'edit';
+  return `<div class="overlay" data-act="close-drawer"></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-h">
+    <header class="dr-head"><h2 id="dr-h">${edit ? `Edit ${esc(dr.demandId)}` : 'New demand'}</h2><button class="icon-btn" data-act="close-drawer" aria-label="Close">×</button></header>
+    <div class="dr-body">
+      ${edit ? `<p class="muted">Change the demand data. The history records each changed field with the old and the new value. Candidates and positions do not change here.</p>` : `<section>
+        <h3>1. Paste or drop the request</h3>
+        <p class="muted">Paste the automatic email from the demand application, or drop a .txt or .eml file on the box. Autofill reads labelled lines such as "Start date: 01/12/2026". You can also skip this and fill the form by hand.</p>
+        <div id="drop" class="drop">
+          <label class="sr" for="src-text">Email text</label>
+          <textarea id="src-text" class="inp" rows="7" placeholder="Paste the email text here, or drop a file on this box.">${esc(dr.text)}</textarea>
+          <div class="row">
+            <button class="btn small primary" data-act="read-text">Fill the form from the text</button>
+            <label class="btn small">Choose file<input type="file" id="src-file" hidden accept=".txt,.eml,text/plain,message/rfc822" data-change="src-file"></label>
+            <button class="btn small ghost" data-act="use-sample">Use a sample email</button>
+          </div>
+        </div>
+        ${dr.parsedCount !== null ? `<p class="parsed">Autofill filled ${plural(dr.parsedCount, 'field')} from ${esc(dr.sourceLabel)}. Blue fields come from the email.${dr.fromClient ? ' The vertical comes from the Module 2 client.' : ''} Red fields are missing. Nothing is saved until you select "Save demand".</p>` : ''}
+      </section>`}
+      <section>
+        <h3>${edit ? 'Demand details' : '2. Check the demand'}</h3>
+        <div class="fgrid">${FIELDS.filter(f => !(edit && f.k === 'notes')).map(fieldView).join('')}</div>
+      </section>
+    </div>
+    <footer class="dr-foot">
+      ${dr.errors.length ? `<div class="errbox"><strong>Cannot save.</strong> ${dr.errors.map(esc).join(' ')}</div>` : ''}
+      ${dr.dup ? `<div class="errbox" style="background:var(--warn-soft)"><strong style="color:var(--warn)">Possible duplicate.</strong> ${esc(dr.dup)} already uses this external ID. <button class="link" data-act="save-anyway">Save anyway</button></div>` : ''}
+      <div class="row"><button class="btn" data-act="close-drawer">Cancel</button><button class="btn primary" data-act="save-demand">${edit ? 'Save changes' : 'Save demand'}</button></div>
+    </footer>
+  </aside>`;
+}
+function saveDemand(force) {
+  const dr = ui.draft, v = dr.values;
+  const missing = FIELDS.filter(f => f.req && (f.type === 'skills' ? !v.skills.length : !String(v[f.k] ?? '').trim())).map(f => f.label);
+  const errs = [];
+  if (missing.length) errs.push(`Fill these fields: ${missing.join(', ')}.`);
+  const n = parseInt(v.requested, 10), al = parseInt(v.allocation, 10);
+  if (String(v.requested).trim() && !(n >= 1)) errs.push('Number of people must be 1 or more.');
+  if (String(v.allocation).trim() && !(al >= 1 && al <= 100)) errs.push('Allocation % must be between 1 and 100.');
+  if (v.start && v.end && v.end < v.start) errs.push('The wanted end date is before the wanted start date.');
+  if (errs.length) { dr.showMissing = true; dr.errors = errs; dr.dup = null; render(); return; }
+  const ext = v.extId.trim();
+  const dup = ext && S.demands.find(d => d.id !== dr.demandId && d.extId && d.extId.toLowerCase() === ext.toLowerCase());
+  if (dup && !force) { dr.dup = dup.id; dr.errors = []; render(); return; }
+  if (dr.mode === 'edit') {
+    const d = findDemand(dr.demandId);
+    const next = { extId: ext, title: v.title.trim(), skills: v.skills.map(s => ({ ...s })), missing: [...v.missing], seniority: v.seniority.trim(), allocation: al, rangeCode: v.rangeCode, maxRate: parseInt(v.maxRate, 10) || null, requestedBy: v.requestedBy.trim(), interviewer: v.interviewer.trim(), received: v.received, start: v.start, end: v.end, horizontal: v.horizontal, vertical: v.vertical, client: v.client.trim(), project: v.project.trim() };
+    const label = Object.assign(Object.fromEntries(FIELDS.map(f => [f.k, f.label])), { skills: 'Required skills', missing: 'Skills not in the catalog' });
+    const ser = (k, x) => k === 'skills' ? x.map(s => `${s.name}:${s.level}:${s.must}`).join('|') : k === 'missing' ? x.join('|') : String(x ?? '');
+    const show = (k, x) => k === 'skills' ? (x.map(s => `${s.name}${s.level ? ' ' + LEVELS[s.level] : ''}${s.must ? '' : ' (nice to have)'}`).join(', ') || 'none')
+      : k === 'missing' ? (x.join(', ') || 'none') : ['received', 'start', 'end'].includes(k) ? fmtD(x) : k === 'allocation' ? `${x}%` : k === 'maxRate' ? (x ? `${x} EUR` : 'empty') : (String(x || '').trim() || 'empty');
+    const changes = [];
+    Object.keys(next).forEach(k => {
+      const a = ser(k, d[k]), b = ser(k, next[k]);
+      if (a !== b) { changes.push(`${label[k]}: ${show(k, d[k])} → ${show(k, next[k])}`); d[k] = next[k]; }
+    });
+    ui.draft = null;
+    if (changes.length) { hist(d, `Edited the demand. ${changes.join('; ')}.`); save(); }
+    render(); toast(changes.length ? `Saved ${plural(changes.length, 'change')} to ${d.id}.` : 'No changes to save.');
+    return;
+  }
+  const id = 'DEM-' + String(S.seq++).padStart(4, '0'); const now = nowIso();
+  const d = {
+    id, extId: ext, title: v.title.trim(), skills: v.skills.map(s => ({ ...s })), missing: [...v.missing], seniority: v.seniority.trim(), requestedBy: v.requestedBy.trim(), interviewer: v.interviewer.trim(),
+    received: v.received, start: v.start, end: v.end, allocation: al, requested: n, rangeCode: v.rangeCode, maxRate: parseInt(v.maxRate, 10) || null, horizontal: v.horizontal, vertical: v.vertical,
+    client: v.client.trim(), project: v.project.trim(), owner: S.me, onHold: null, cancellations: [], candidates: [],
+    notes: v.notes.trim() ? [{ by: S.me, at: now, text: v.notes.trim() }] : [], source: dr.source || '',
+    history: [{ at: now, by: S.me, text: dr.source ? `Created the demand from ${dr.sourceLabel}. Autofill filled ${plural(dr.parsedCount, 'field')}.` : 'Created the demand by hand.' }],
+  };
+  if (d.missing.length) hist(d, `Skills not in the catalog: ${d.missing.join(', ')}.${dr.skillReq ? ' Request sent to the admin (Module 1).' : ''}`);
+  S.demands.unshift(d); ui.draft = null; ui.newRow = id; ui.filter = 'All'; save(); render();
+  toast(`Saved ${id}.`, { label: 'Open demand', act: 'open-demand', id });
+}
+
+/* ================= modals ================= */
+function modalSpec() {
+  const m = ui.modal, d = curD();
+  if (m.kind === 'reset') return { title: 'Reset demo data', ok: 'Reset demo data', danger: true, body: `<p>This replaces all demands with the original demo data. Your changes in this browser are lost.</p>` };
+  if (m.kind === 'alloc') {
+    const c = findCand(d, m.candId), s = c.steps.find(x => x.type === 'start'), e = EMP[c.empId], cur = e.alloc + sessionPlacementsPct(c.empId, c.id);
+    return { title: 'Create allocation (Module 2)', ok: 'Create allocation', wide: true, body: `<div class="mockbox"><strong>Mock of the Module 2 form "Create allocation".</strong> Module 3 fills these values from the demand and the placement.</div>
+      <dl class="facts">
+        <div><dt>Employee</dt><dd>${esc(e.name)}</dd></div>
+        <div><dt>Role on the project</dt><dd>${esc(d.title)}</dd></div>
+        <div><dt>Allocation</dt><dd>${s.pct}%</dd></div>
+        <div><dt>Start date</dt><dd>${fmtD(s.startDate)}</dd></div>
+        <div><dt>End date</dt><dd>${fmtD(d.end)}</dd></div>
+        <div><dt>Client</dt><dd>${esc(d.client || 'Not set')}</dd></div>
+      </dl>
+      <div class="field"><label for="m-proj">Project (Module 2)</label><select id="m-proj" class="inp">${(PROJECTS[d.client] || []).map(p => `<option ${p === d.project ? 'selected' : ''}>${esc(p)}</option>`).join('')}<option value="new" ${(PROJECTS[d.client] || []).includes(d.project) ? '' : 'selected'}>Create the project "${esc(d.project || d.title)}" with the status PIPELINE</option></select>
+        <p class="fhint">Most demands are for new projects. Module 2 needs a project before it can store the allocation.</p></div>
+      <div><span style="font-size:13px;font-weight:500">Engagement skills (Module 2), from the demand</span><div class="chips" style="margin-top:4px">${d.skills.filter(x => catalogSkill(x.name).cat === 'Technical').map(x => `<span class="chip">${esc(x.name)}</span>`).join('') || '<span class="muted">No technical skills on the demand.</span>'}</div>
+        <p class="fhint">The line manager (${esc(userName(e.lm))}) confirms these skills during the engagement. They feed CV generation (Module 5).</p></div>
+      ${cur > 0 ? `<div class="warnbox"><p><strong>${esc(e.name)} has ${cur}% on other projects now.</strong> The total with this allocation is ${cur + s.pct}%. ${cur + s.pct > 100 ? 'Module 2 flags this and needs an override note from the PMO.' : 'Module 2 accepts this without an override.'} If the person leaves the current project early, the line manager sends a release request (Module 2 workflow).</p></div>` : ''}` };
+  }
+  if (m.kind === 'deleteDemand') {
+    const dd = findDemand(m.id), act = dd.candidates.filter(c => !c.closed && !isPlaced(c)).length;
+    return { title: `Delete ${dd.id}`, ok: 'Delete demand', danger: true, body: `<p>The demand leaves the list. The system keeps the record, the candidates, and the history. You can restore the demand from the "Deleted" tab.</p>
+      ${act ? `<p class="err">${plural(act, 'candidate')} still in process on this demand.</p>` : ''}
+      <div class="field"><label for="m-reason">Reason</label><textarea id="m-reason" class="inp" rows="2" placeholder="For example: Created twice by mistake."></textarea></div>` };
+  }
+  if (m.kind === 'cancelPos') {
+    const o = openCount(d);
+    return { title: 'Cancel positions', ok: 'Cancel positions', danger: true, body: `<p>${plural(o, 'open position')}. Cancelled positions stay in the history with the reason.</p>
+      <div class="fgrid one">
+        <div class="field"><label for="m-count">Number of positions to cancel</label><input id="m-count" class="inp" type="number" min="1" max="${o}" value="${o}"></div>
+        <div class="field"><label for="m-reason">Reason</label><select id="m-reason" class="inp"><option value="">Select a reason</option>${CANCEL_REASONS.map(r => `<option>${r}</option>`).join('')}</select></div>
+        <div class="field"><label for="m-note">Note <span class="muted">(required for "Other")</span></label><textarea id="m-note" class="inp" rows="2"></textarea></div>
+      </div>` };
+  }
+  if (m.kind === 'addPos') return { title: 'Add positions', ok: 'Add positions', body: `<p>The client needs more people. The history keeps the old and the new number.</p>
+      <div class="fgrid one">
+        <div class="field"><label for="m-count">Number of positions to add</label><input id="m-count" class="inp" type="number" min="1" max="20" value="1"></div>
+        <div class="field"><label for="m-reason">Reason</label><textarea id="m-reason" class="inp" rows="2" placeholder="For example: The client extended the scope."></textarea></div>
+      </div>` };
+  if (m.kind === 'hold') return { title: 'Put the demand on hold', ok: 'Put on hold', body: `<div class="field"><label for="m-reason">Reason</label><textarea id="m-reason" class="inp" rows="2" placeholder="For example: Client budget review."></textarea></div>` };
+  if (m.kind === 'closeCand') {
+    const c = findCand(d, m.candId);
+    return { title: `${m.status === 'Rejected' ? 'Reject' : 'Withdraw'} ${nameOf(c)}`, ok: m.status === 'Rejected' ? 'Reject candidate' : 'Withdraw candidate', danger: m.status === 'Rejected',
+      body: `<p>${m.status === 'Rejected' ? 'The candidate stays in the list with the status Rejected. The reason feeds the statistics later.' : 'Use Withdrawn when the candidate or the team stops the process, for example when the person accepts another demand.'}</p>
+      <div class="field"><label for="m-reason">Reason</label><textarea id="m-reason" class="inp" rows="2"></textarea></div>` };
+  }
+  if (m.kind === 'ext') return { title: 'Add external candidate', ok: 'Add candidate', body: `<p>A person from the market, found by a recruiter. External candidates get the extra step "Offer sent".</p>
+      ${m.known.length ? `<div class="field"><label for="m-known">Existing external person</label><select id="m-known" class="inp" data-change="pick-known"><option value="">A new person</option>${m.known.map((k, i) => `<option value="${i}">${esc(k.name)}${k.email ? ` (${esc(k.email)})` : ''}</option>`).join('')}</select>
+        <p class="fhint">One person can be a candidate on several demands. Select the person to use the same data.</p></div>` : ''}
+      <div id="m-dup" class="dupbox" hidden></div>
+      <div class="fgrid">
+        <div class="field"><label for="m-name">Full name <span class="req">*</span></label><input id="m-name" class="inp"></div>
+        <div class="field"><label for="m-email">Email</label><input id="m-email" class="inp" type="email"></div>
+        <div class="field"><label for="m-rec">Recruiter</label><select id="m-rec" class="inp">${RECRUITERS.map(r => `<option value="${r}">${esc(USERS[r].name)}</option>`).join('')}</select></div>
+        <div class="field"><label for="m-rate">Expected daily rate (EUR)</label><input id="m-rate" class="inp" type="number" min="0" step="10">${d.maxRate ? `<p class="fhint">The maximum for this demand is ${d.maxRate} EUR.</p>` : ''}</div>
+      </div>` };
+  if (m.kind === 'find') {
+    const existing = new Set(d.candidates.filter(c => c.type === 'internal').map(c => c.empId));
+    const pool = Object.keys(EMP).map(id => ({ id, e: EMP[id], f: freeInfo(id), m: mustMet(id, d) }))
+      .filter(x => x.f.show).sort((a, b) => b.m.met - a.m.met || a.f.rank - b.f.rank);
+    return { title: 'Find candidates', ok: 'Add selected', wide: true, body: `<div class="mockbox"><strong>Mock of Module 4 (Search).</strong> It shows people on the bench, people with free capacity, and people whose allocation ends in the next 3 months. The real search is out of scope for Module 3.</div>
+      <p class="muted">One person can be a candidate on several demands. The coloured labels show the other demands of each person and the current step there.</p>
+      <p class="muted">Demand skills: ${d.skills.map(s => `${esc(s.name)} (${lvlName(s.level)}${s.must ? ', must have' : ''})`).join(', ')}</p>${FIT_LEGEND}
+      <ul class="picks" id="find-list">${pool.map(x => {
+        const already = existing.has(x.id);
+        const links = personLinks(d, { type: 'internal', empId: x.id });
+        return `<li><label class="pick ${already ? 'is-off' : ''}"><input type="checkbox" value="${x.id}" ${already ? 'disabled' : ''}><span class="avatar sm">${esc(initials(x.e.name))}</span>
+          <span class="pick-b"><span class="pick-top"><strong>${esc(x.e.name)}</strong><span>${esc(x.f.text)}</span></span>
+          <span class="muted">${esc(x.e.title)} · has ${x.m.met} of ${x.m.total} must-have skills · line manager ${esc(userName(x.e.lm))}${already ? ' · already a candidate on this demand' : ''}</span>
+          ${links.length || costFit(d, { type: 'internal', empId: x.id }) ? `<span class="links">${costLabel(costFit(d, { type: 'internal', empId: x.id }))}${links.length ? linkChips(links) : ''}</span>` : ''}
+          <span class="chips">${fitChips(x.id, d)}</span></span></label></li>`;
+      }).join('')}</ul>` };
+  }
+  return { title: '', body: '' };
+}
+function renderModal() {
+  const sp = modalSpec();
+  return `<div class="overlay" data-act="modal-close"></div>
+  <div class="modal ${sp.wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="m-h">
+    <header><h2 id="m-h">${esc(sp.title)}</h2><button class="icon-btn" data-act="modal-close" aria-label="Close">×</button></header>
+    <div class="m-body">${sp.body}<p class="err" id="m-err" hidden></p></div>
+    <footer><button class="btn" data-act="modal-close">Cancel</button><button class="btn ${sp.danger ? 'danger' : 'primary'}" data-act="modal-ok">${esc(sp.ok)}</button></footer>
+  </div>`;
+}
+function modalErr(msg) { const e = $('#m-err'); if (e) { e.textContent = msg; e.hidden = false; } }
+function openModal(kind, extra = {}) { ui.modal = Object.assign({ kind }, extra); render(); setTimeout(() => { const el = document.querySelector('.modal input:not([type=checkbox]):not([disabled]), .modal select, .modal textarea, .modal [data-act="modal-ok"]'); if (el) el.focus(); }, 0); }
+function closeModal() { ui.modal = null; render(); }
+function modalSubmit() {
+  const m = ui.modal, d = curD(), val = id => ($(id) ? $(id).value.trim() : '');
+  if (m.kind === 'reset') { S = seed(); save(); Object.assign(ui, { view: 'list', demandId: null, filter: 'All', q: '', open: new Set(), multi: new Set(), addStep: null, neg: null, draft: null, modal: null, newRow: null }); setHash(''); render(); toast('Demo data reset.'); return; }
+  if (m.kind === 'alloc') {
+    const c = findCand(d, m.candId), p = val('#m-proj');
+    c.allocCreated = true;
+    hist(d, `Created the Module 2 allocation for ${nameOf(c)} (mock). Project: ${p === 'new' ? `new project "${d.project || d.title}" (PIPELINE)` : p}.`);
+    ui.modal = null; save(); render(); toast('Allocation created in Module 2 (mock). The bench and availability update there.'); return;
+  }
+  if (m.kind === 'deleteDemand') {
+    const reason = val('#m-reason'); if (!reason) return modalErr('Write a reason.');
+    const dd = findDemand(m.id);
+    dd.deleted = { reason, by: S.me, at: nowIso() }; hist(dd, `Deleted the demand: ${reason}`);
+    ui.modal = null;
+    if (ui.view === 'detail' && ui.demandId === dd.id) { ui.view = 'list'; ui.demandId = null; setHash(''); }
+    save(); render(); toast(`${dd.id} deleted.`, { label: 'Undo', act: 'restore-demand', id: dd.id }); return;
+  }
+  if (m.kind === 'cancelPos') {
+    const o = openCount(d), n = parseInt(val('#m-count'), 10), reason = val('#m-reason'), note = val('#m-note');
+    if (!(n >= 1 && n <= o)) return modalErr(`Enter a number from 1 to ${o}.`);
+    if (!reason) return modalErr('Select a reason.');
+    if (reason === 'Other' && !note) return modalErr('Write a note for the reason "Other".');
+    withStatusLog(d, () => { d.cancellations.push({ count: n, reason, note, by: S.me, at: nowIso() }); hist(d, `Cancelled ${plural(n, 'position')}. Reason: ${reason}.${note ? ' ' + note : ''}`); });
+    ui.modal = null; save(); render(); toast(`${plural(n, 'position')} cancelled.`); return;
+  }
+  if (m.kind === 'addPos') {
+    const n = parseInt(val('#m-count'), 10), reason = val('#m-reason');
+    if (!(n >= 1 && n <= 20)) return modalErr('Enter a number from 1 to 20.');
+    if (!reason) return modalErr('Write a reason.');
+    withStatusLog(d, () => { const old = d.requested; d.requested += n; hist(d, `Changed the number of people from ${old} to ${d.requested}. Reason: ${reason}`); });
+    ui.modal = null; save(); render(); toast(`${plural(n, 'position')} added.`); return;
+  }
+  if (m.kind === 'hold') {
+    const reason = val('#m-reason'); if (!reason) return modalErr('Write a reason.');
+    withStatusLog(d, () => { d.onHold = { reason, by: S.me, at: nowIso() }; hist(d, `Put the demand on hold: ${reason}`); });
+    ui.modal = null; save(); render(); toast('Demand on hold.'); return;
+  }
+  if (m.kind === 'closeCand') {
+    const reason = val('#m-reason'); if (!reason) return modalErr('Write a reason.');
+    const c = findCand(d, m.candId);
+    c.closed = { status: m.status, reason, by: S.me, at: nowIso() };
+    hist(d, `${nameOf(c)} ${m.status.toLowerCase()}: ${reason}`);
+    if (ui.addStep && ui.addStep.candId === c.id) ui.addStep = null;
+    ui.modal = null; save(); render(); toast(`${nameOf(c)}: ${m.status}.`); return;
+  }
+  if (m.kind === 'ext') {
+    const name = val('#m-name'); if (!name) return modalErr('Enter the full name.');
+    const probe = { type: 'external', ext: { name, email: val('#m-email') } };
+    const here = d.candidates.find(c2 => samePerson(probe, c2));
+    if (here) return modalErr(`${name} is already a candidate on this demand.`);
+    const rate = parseInt(val('#m-rate'), 10) || null;
+    const c = { id: uid(), type: 'external', ext: { name, email: val('#m-email'), recruiter: val('#m-rec'), rate }, source: 'Recruiter', closed: null, notes: [], steps: [], addedAt: nowIso() };
+    d.candidates.push(c); hist(d, `Added ${name} (external, recruiter ${userName(c.ext.recruiter)}).`);
+    ui.open.add(c.id); ui.modal = null; save(); render();
+    const others = otherActive(d, c);
+    const cf = costFit(d, c);
+    toast(`${name} added.${others.length ? ` This person is also a candidate on ${others.map(x => x.d.id).join(', ')}.` : ''}${cf && cf.over ? ' The rate is above the budget of the demand.' : ''}`);
+    return;
+  }
+  if (m.kind === 'find') {
+    const ids = [...document.querySelectorAll('#find-list input:checked')].map(i => i.value);
+    if (!ids.length) return modalErr('Select at least one person.');
+    const added = ids.map(id => { const c = { id: uid(), type: 'internal', empId: id, source: 'Bench search (Module 4)', cv: null, closed: null, inM2: false, notes: [], steps: [], addedAt: nowIso() }; d.candidates.push(c); return c; });
+    hist(d, `Added ${added.map(nameOf).join(', ')} from Module 4 search.`);
+    added.forEach(c => ui.open.add(c.id)); ui.modal = null; save(); render();
+    toast(`${plural(added.length, 'candidate')} added. Add the "CV sent" step when you send the CV to the client.`);
+  }
+}
+
+/* ================= steps ================= */
+function stepErr(msg) { const e = $('#s-err'); if (e) { e.textContent = msg; e.hidden = false; } }
+function saveStep(force) {
+  const d = curD(), a = ui.addStep, c = findCand(d, a.candId), now = nowIso();
+  const val = id => ($(id) ? $(id).value.trim() : '');
+  const s = { id: uid(), type: a.type, by: S.me, notes: [], changes: [] };
+  let notify = [];
+  if (a.type === 'cv') { s.date = val('#s-date'); if (!s.date) return stepErr('Enter the date sent.'); s.sentTo = val('#s-to'); s.status = 'Waiting for feedback'; }
+  else if (a.type === 'meeting') {
+    s.kind = val('#s-kind'); s.when = val('#s-when'); if (!s.when) return stepErr('Enter the date and time.');
+    const users = [...document.querySelectorAll('input[name="s-part"]:checked')].map(i => i.value);
+    const exts = val('#s-ext').split(',').map(x => x.trim()).filter(Boolean);
+    s.participants = [...users.map(u => ({ id: uid(), userId: u, verdict: null, feedback: '', at: null })), ...exts.map(n => ({ id: uid(), name: n }))];
+    if (!s.participants.length) return stepErr('Add at least one participant.');
+    s.status = 'Scheduled'; notify = users;
+  }
+  else if (a.type === 'offer') { s.date = val('#s-date'); if (!s.date) return stepErr('Enter the date sent.'); s.status = 'Sent'; }
+  else if (a.type === 'custom') { s.title = val('#s-title'); s.date = val('#s-date'); if (!s.title) return stepErr('Enter the step name.'); if (!s.date) return stepErr('Enter the date.'); s.status = 'To do'; }
+  else if (a.type === 'start') {
+    const start = val('#s-start'), pct = parseInt(val('#s-pct'), 10);
+    if (!start) return stepErr('Enter the start date.');
+    if (!(pct >= 1 && pct <= 100)) return stepErr('Allocation % must be between 1 and 100.');
+    if (openCount(d) <= 0) return stepErr('No open position on this demand. A placement must fill an open position. Add a position first.');
+    if (c.type === 'internal' && !force) {
+      const cur = EMP[c.empId].alloc + sessionPlacementsPct(c.empId, c.id);
+      if (cur + pct > 100) { a.vals = { start, pct }; a.warn = { now: cur, total: cur + pct }; render(); return; }
+    }
+    s.startDate = start; s.pct = pct; s.status = 'Confirmed';
+  }
+  const note = val('#s-note'); if (note) s.notes.push({ by: S.me, at: now, text: note });
+  s.changes.push({ status: s.status, at: now, by: S.me });
+  withStatusLog(d, () => {
+    c.steps.push(s);
+    hist(d, `${nameOf(c)}: added step "${stepTitle(s)}".`);
+    if (s.type === 'start') hist(d, `${nameOf(c)} placed. Start date ${fmtD(s.startDate)}, ${s.pct}%. ${plural(openCount(d), 'position')} still open.`);
+  });
+  ui.addStep = null; save(); render();
+  if (notify.length) toast(`Notification sent to ${notify.map(userName).join(', ')} (mock).`);
+  if (s.type === 'start') {
+    const others = otherActive(d, c).filter(x => !isPlaced(x.c));
+    if (c.type === 'internal') openModal('alloc', { candId: c.id }); else toast('Placed. The demand counts this person as filled.');
+    if (others.length) setTimeout(() => toast(`${nameOf(c)} is also a candidate on ${others.map(x => x.d.id).join(', ')}. Those demands now show this placement.`), 400);
+  }
+}
+function applyNeg(reject) {
+  const d = curD(), c = findCand(d, ui.neg.candId), s = findStep(c, ui.neg.stepId);
+  const reason = $('#neg-reason').value.trim();
+  if (!reason) { const e = $('#neg-err'); e.textContent = 'Write the reason.'; e.hidden = false; return; }
+  const now = nowIso();
+  s.status = ui.neg.status; s.changes.push({ status: s.status, at: now, by: S.me }); s.notes.push({ by: S.me, at: now, text: `Reason: ${reason}` });
+  hist(d, `${nameOf(c)}: "${stepTitle(s)}" changed to ${s.status}. Reason: ${reason}`);
+  if (reject) { c.closed = { status: 'Rejected', reason, by: S.me, at: now }; hist(d, `${nameOf(c)} rejected: ${reason}`); }
+  ui.neg = null; save(); render();
+  toast(reject ? `${nameOf(c)} rejected.` : 'Saved. Add the next step when you are ready.');
+}
+
+/* ================= render ================= */
+function setHash(id) { try { history.replaceState(null, '', id ? '#' + id : location.pathname + location.search); } catch (e) {} }
+function render() {
+  const view = $('#view');
+  const keep = {}; view.querySelectorAll('.keep[id]').forEach(el => { if (el.value) keep[el.id] = el.value; });
+  $('#view-as').value = S.me;
+  view.innerHTML = role() === 'emp' ? renderNoAccess() : (ui.view === 'detail' ? renderDetail() : renderList());
+  Object.entries(keep).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+  const drawer = ui.draft && ui.draft.mode === 'new';
+  const oldBody = $('.dr-body'), drScroll = oldBody ? oldBody.scrollTop : 0;
+  $('#layer').innerHTML = ui.modal ? renderModal() : (drawer ? renderDrawer() : '');
+  const newBody = $('.dr-body'); if (newBody && drScroll) newBody.scrollTop = drScroll;
+  document.body.style.overflow = ui.modal || drawer ? 'hidden' : '';
+  renderMenu();
+}
+function renderMenu() {
+  const root = $('#menu-root'), m = ui.menu, d = m && findDemand(m.id);
+  if (!d) { root.innerHTML = ''; return; }
+  const onTab = t => ui.view === 'detail' && ui.demandId === d.id && ui.tab === t;
+  const nav = [!onTab('candidates') && ['menu-open', 'Open candidates'], !onTab('details') && ['menu-details', 'Demand details and history']];
+  const items = d.deleted
+    ? [...nav, ['restore-demand', 'Restore demand']]
+    : [...nav, ['edit-demand', 'Edit demand'], 'hr', ['menu-delete', 'Delete demand', 'bad']];
+  root.innerHTML = `<div class="menu" role="menu" aria-label="Actions for ${d.id}" style="top:${m.top}px;left:${m.left}px">${items.filter(Boolean).map(x => x === 'hr' ? '<hr>' : `<button role="menuitem" class="${x[2] || ''}" data-act="${x[0]}" data-id="${d.id}">${x[1]}</button>`).join('')}</div>`;
+}
+function closeMenu() { if (ui.menu) { ui.menu = null; renderMenu(); } }
+const hashFor = (id, tab) => (tab === 'details' ? `${id}.details` : id);
+function openDemand(id, tab = 'candidates') {
+  const d = findDemand(id);
+  if (!d || !visibleDemands(true).includes(d)) { toast('You cannot open this demand with your role.'); return; }
+  Object.assign(ui, { view: 'detail', demandId: id, tab, addStep: null, neg: null, histAll: false, modal: null, draft: null, multi: new Set() });
+  ui.open = new Set();
+  const first = visibleCands(d).find(c => !c.closed && !isPlaced(c)) || visibleCands(d)[0];
+  if (first) ui.open.add(first.id);
+  setHash(hashFor(id, tab)); render(); window.scrollTo(0, 0);
+}
+function toast(msg, action) {
+  const el = document.createElement('div'); el.className = 'toast';
+  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="btn small" data-act="${action.act}" data-id="${esc(action.id)}">${esc(action.label)}</button>` : ''}`;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.classList.add('out'), 5200); setTimeout(() => el.remove(), 5600);
+}
+
+/* ================= events ================= */
+const A = {
+  'go-list': () => { $('.app').classList.remove('mobile-open'); Object.assign(ui, { view: 'list', demandId: null, addStep: null, neg: null, draft: null }); setHash(''); render(); window.scrollTo(0, 0); },
+  'dtab': t => { ui.tab = t.dataset.v; Object.assign(ui, { draft: null, addStep: null, neg: null }); setHash(hashFor(ui.demandId, ui.tab)); render(); },
+  'menu-details': t => { closeMenu(); openDemand(t.dataset.id, 'details'); },
+  'cancel-edit': () => { ui.draft = null; render(); },
+  'sk-add': t => {
+    const dr = ui.draft, kind = t.dataset.kind, n = $(`#sk-add-${kind}`).value;
+    if (!n) { toast(kind === 'langs' ? 'Select a language first.' : 'Select a skill from the catalog first.'); return; }
+    dr.values.skills.push({ name: n, level: parseInt($(`#sk-lvl-${kind}`).value, 10) || null, must: true }); dr.auto.delete(kind); render();
+  },
+  'sk-remove': t => { ui.draft.values.skills.splice(+t.dataset.i, 1); render(); },
+  'sk-request': () => { ui.draft.skillReq = true; render(); toast(`Request sent to the admin: add ${ui.draft.values.missing.join(', ')} to the skill catalog (Module 1, mock).`); },
+  'sk-clear-missing': () => { ui.draft.values.missing = []; render(); },
+  'open-alloc': t => openModal('alloc', { candId: t.dataset.cand }),
+  'toggle-nav': () => {
+    const app = $('.app');
+    if (window.matchMedia('(max-width: 900px)').matches) { app.classList.toggle('mobile-open'); return; }
+    const collapsed = app.classList.toggle('collapsed');
+    try { localStorage.setItem(NAV_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    $('.side-toggle').setAttribute('aria-label', collapsed ? 'Expand the sidebar' : 'Collapse the sidebar');
+  },
+  'row-menu': t => {
+    if (ui.menu && ui.menu.id === t.dataset.id) { closeMenu(); return; }
+    const r = t.getBoundingClientRect(), w = 200, h = 140;
+    let top = r.bottom + 4; if (top + h > window.innerHeight) top = Math.max(8, r.top - h - 4);
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w));
+    ui.menu = { id: t.dataset.id, top, left }; renderMenu();
+    setTimeout(() => { const f = document.querySelector('.menu button'); if (f) f.focus(); }, 0);
+  },
+  'menu-open': t => { closeMenu(); openDemand(t.dataset.id); },
+  'edit-demand': t => { closeMenu(); const d = findDemand(t.dataset.id); if (!d) return; openDemand(d.id, 'details'); if (ui.demandId !== d.id) return; ui.draft = editDraft(d); render(); setTimeout(() => { const el = $('#f-title'); if (el) el.focus(); }, 0); },
+  'menu-delete': t => { closeMenu(); openModal('deleteDemand', { id: t.dataset.id }); },
+  'restore-demand': t => {
+    closeMenu(); const d = findDemand(t.dataset.id); if (!d || !d.deleted) return;
+    d.deleted = null; hist(d, 'Restored the demand.'); save(); render(); toast(`${d.id} restored.`);
+  },
+  'open-demand': t => openDemand(t.dataset.id),
+  'filter': t => { ui.filter = t.dataset.v; render(); },
+  'new-demand': () => { ui.draft = newDraft(); render(); setTimeout(() => { const el = $('#src-text'); if (el) el.focus(); }, 0); },
+  'close-drawer': () => { ui.draft = null; render(); },
+  'use-sample': () => { readSource(sampleEmail(), 'the sample email'); },
+  'read-text': () => { const v = $('#src-text').value.trim(); if (!v) { toast('Paste the email text first.'); return; } readSource(v, 'the pasted text'); },
+  'save-demand': () => saveDemand(false),
+  'save-anyway': () => saveDemand(true),
+  'toggle-cand': t => { const id = t.dataset.cand; if (ui.open.has(id)) ui.open.delete(id); else ui.open.add(id); render(); },
+  'toggle-multi': t => { const id = t.dataset.cand; if (ui.multi.has(id)) ui.multi.delete(id); else ui.multi.add(id); render(); },
+  'open-cancel-pos': () => openModal('cancelPos'),
+  'open-add-pos': () => openModal('addPos'),
+  'open-hold': () => openModal('hold'),
+  'resume': () => { const d = curD(); withStatusLog(d, () => { d.onHold = null; hist(d, 'Resumed the demand.'); }); save(); render(); toast('Demand resumed.'); },
+  'open-find': () => openModal('find'),
+  'open-add-ext': () => {
+    const d = curD(), seen = new Map();
+    for (const d2 of S.demands) { if (d2.deleted) continue; for (const c of d2.candidates) if (c.type === 'external' && !d.candidates.some(x => samePerson(c, x))) { const k = (c.ext.email || c.ext.name).toLowerCase(); if (!seen.has(k)) seen.set(k, { ...c.ext }); } }
+    openModal('ext', { known: [...seen.values()] });
+  },
+  'toggle-theme': () => setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark', true),
+  'cand-close': t => openModal('closeCand', { candId: t.dataset.cand, status: t.dataset.status }),
+  'modal-close': () => closeModal(),
+  'modal-ok': () => modalSubmit(),
+  'reset-data': () => openModal('reset'),
+  'hist-all': () => { ui.histAll = !ui.histAll; render(); },
+  'add-step-type': t => { ui.addStep = { candId: t.dataset.cand, type: t.dataset.type, vals: null, warn: null }; ui.neg = null; render(); setTimeout(() => { const el = document.querySelector('.stepform input, .stepform select'); if (el) el.focus(); }, 0); },
+  'add-step-cancel': () => { ui.addStep = null; render(); },
+  'add-step-save': () => saveStep(false),
+  'start-confirm-anyway': () => saveStep(true),
+  'neg-keep': () => applyNeg(false),
+  'neg-reject': () => applyNeg(true),
+  'neg-cancel': () => { ui.neg = null; render(); },
+  'add-participant': t => {
+    const d = curD(), c = findCand(d, t.dataset.cand), s = findStep(c, t.dataset.step);
+    const u = $(`#apu-${s.id}`).value, nEl = $(`#apn-${s.id}`), n = nEl.value.trim();
+    if (!u && !n) { toast('Select a user or type an external name.'); return; }
+    if (u) s.participants.push({ id: uid(), userId: u, verdict: null, feedback: '', at: null });
+    if (n) s.participants.push({ id: uid(), name: n });
+    nEl.value = '';
+    hist(d, `${nameOf(c)}: added ${[u && userName(u), n].filter(Boolean).join(' and ')} to "${stepTitle(s)}".`);
+    save(); render(); if (u) toast(`Notification sent to ${userName(u)} (mock).`);
+  },
+  'give-feedback': t => {
+    const d = curD(), c = findCand(d, t.dataset.cand), s = findStep(c, t.dataset.step), p = s.participants.find(x => x.id === t.dataset.part);
+    const v = document.querySelector(`input[name="fbv-${p.id}"]:checked`), txtEl = $(`#fbt-${p.id}`), txt = txtEl.value.trim();
+    const e = $(`#fbe-${p.id}`);
+    if (!v || !txt) { e.textContent = 'Select a verdict and write your feedback.'; e.hidden = false; return; }
+    p.verdict = v.value; p.feedback = txt; p.at = nowIso(); txtEl.value = '';
+    hist(d, `${userName(p.userId)} gave ${p.verdict} feedback on "${stepTitle(s)}" for ${nameOf(c)}.`);
+    save(); render(); toast('Feedback saved. The demand manager sees it now.');
+  },
+  'add-note': t => {
+    const d = curD(), { scope, key } = t.dataset, el = $(`#note-${scope}-${key}`), text = el.value.trim();
+    if (!text) { toast('Write the note first.'); return; }
+    const n = { by: S.me, at: nowIso(), text };
+    if (scope === 'demand') d.notes.push(n);
+    else { const c = findCand(d, t.dataset.cand); if (scope === 'cand') c.notes.push(n); else findStep(c, key).notes.push(n); }
+    el.value = ''; save(); render(); toast('Note added.');
+  },
+};
+const CH = {
+  'view-as': t => {
+    S.me = t.value; Object.assign(ui, { addStep: null, neg: null, draft: null, modal: null }); save();
+    if (ui.view === 'detail' && !visibleDemands().includes(curD())) { ui.view = 'list'; ui.demandId = null; setHash(''); }
+    else if (ui.view === 'detail') { const d = curD(); ui.open = new Set(visibleCands(d).filter(c => role() !== 'lm' ? ui.open.has(c.id) : true).map(c => c.id)); }
+    render(); toast(`Viewing as ${me().name}, ${me().roleLabel}.`);
+  },
+  'step-status': t => {
+    const d = curD(), c = findCand(d, t.dataset.cand), s = findStep(c, t.dataset.step), v = t.value;
+    if (NEG.has(v)) { ui.neg = { candId: c.id, stepId: s.id, status: v }; ui.addStep = null; render(); setTimeout(() => { const el = $('#neg-reason'); if (el) el.focus(); }, 0); return; }
+    ui.neg = null; s.status = v; s.changes.push({ status: v, at: nowIso(), by: S.me });
+    hist(d, `${nameOf(c)}: "${stepTitle(s)}" changed to ${v}.`); save(); render();
+  },
+  'src-file': t => { if (t.files[0]) readFile(t.files[0]); },
+  'sk-level': t => { ui.draft.values.skills[+t.dataset.i].level = parseInt(t.value, 10) || null; },
+  'sk-must': t => { ui.draft.values.skills[+t.dataset.i].must = t.checked; },
+  'pick-known': t => {
+    const k = ui.modal && ui.modal.known[t.value];
+    $('#m-name').value = k ? k.name : ''; $('#m-email').value = k ? (k.email || '') : '';
+    if (k && k.recruiter) $('#m-rec').value = k.recruiter;
+    $('#m-rate').value = k && k.rate ? k.rate : '';
+    updateDup();
+  },
+};
+function updateDup() {
+  const box = $('#m-dup'), d = curD(); if (!box || !d) return;
+  const name = $('#m-name').value.trim(), email = $('#m-email').value.trim();
+  if (name.length < 3 && !email) { box.hidden = true; return; }
+  const probe = { type: 'external', ext: { name: name || '\u0000', email } };
+  const here = d.candidates.find(c => samePerson(probe, c));
+  const links = personLinks(d, probe);
+  if (here) { box.className = 'dupbox block'; box.innerHTML = `<strong>Already on this demand.</strong> ${esc(nameOf(here))} is a candidate here: ${esc(currentStepLabel(here))}.`; box.hidden = false; return; }
+  if (!links.length) { box.hidden = true; return; }
+  box.className = 'dupbox';
+  box.innerHTML = `<span><strong>${esc(nameOf(links[0].c))} is on other demands.</strong> You can add the person here too.</span>${linkChips(links)}`;
+  box.hidden = false;
+}
+function setTheme(t, remember) {
+  document.documentElement.setAttribute('data-theme', t);
+  const b = $('.theme-btn'); if (b) { b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'); b.querySelector('.lbl-t').textContent = t === 'dark' ? 'Light' : 'Dark'; }
+  if (remember) { try { localStorage.setItem(THEME_KEY, t); } catch (e) {} }
+}
+function readFile(file) {
+  if (file.size > 1024 * 1024) { toast('The file is larger than 1 MB. Use a .txt or .eml file.'); return; }
+  const r = new FileReader();
+  r.onload = () => readSource(String(r.result), `the file ${file.name}`);
+  r.onerror = () => toast('Cannot read the file. Paste the text instead.');
+  r.readAsText(file);
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]');
+  if (ui.menu && !e.target.closest('.menu') && !(t && t.dataset.act === 'row-menu')) { closeMenu(); return; }
+  if (!t || t.disabled) return; const fn = A[t.dataset.act]; if (fn) fn(t, e);
+});
+window.addEventListener('scroll', closeMenu, true);
+window.addEventListener('resize', closeMenu);
+document.addEventListener('change', e => { const t = e.target.closest('[data-change]'); if (t && CH[t.dataset.change]) CH[t.dataset.change](t, e); });
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'q') { ui.q = t.value; ui.newRow = null; const b = $('#dt-body'); if (b) b.innerHTML = rowsHtml(); return; }
+  if (t.id === 'src-text' && ui.draft) { ui.draft.text = t.value; return; }
+  if (t.id === 'm-name' || t.id === 'm-email') { updateDup(); return; }
+  if (t.dataset && t.dataset.field && ui.draft) {
+    const k = t.dataset.field; ui.draft.values[k] = t.value; ui.draft.auto.delete(k);
+    const f = t.closest('.field'); if (f) { f.classList.remove('auto'); if (t.value.trim()) f.classList.remove('miss'); const tag = f.querySelector('.tag-auto'); if (tag) tag.remove(); }
+    if (k === 'client') {
+      const cl = findClient(t.value), vs = $('#f-vertical');
+      if (cl && vs) {
+        ui.draft.values.vertical = cl.vertical; ui.draft.fromClient = true; vs.value = cl.vertical;
+        const vf = vs.closest('.field'); vf.classList.remove('miss'); vf.classList.add('auto');
+        if (!vf.querySelector('.tag-auto')) vf.querySelector('label').insertAdjacentHTML('beforeend', '<span class="tag-auto">From the Module 2 client</span>');
+      }
+    }
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if (ui.menu) closeMenu(); else if ($('.app').classList.contains('mobile-open')) $('.app').classList.remove('mobile-open'); else if (ui.modal) closeModal(); else if (ui.draft) { ui.draft = null; render(); } return; }
+  if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-act]')) { e.preventDefault(); openDemand(e.target.dataset.id); }
+});
+document.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); const z = $('#drop'); if (z) z.classList.toggle('over', !!e.target.closest('#drop')); } });
+document.addEventListener('dragleave', e => { const z = $('#drop'); if (z && !e.relatedTarget) z.classList.remove('over'); });
+document.addEventListener('drop', e => {
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault();
+  const z = $('#drop'); if (z) z.classList.remove('over');
+  if (ui.draft && e.target.closest('#drop')) readFile(e.dataTransfer.files[0]); else if (ui.draft) toast('Drop the file on the email box.');
+});
+
+/* ================= boot ================= */
+let theme = 'light'; try { if (localStorage.getItem(THEME_KEY) === 'dark') theme = 'dark'; } catch (e) {}
+setTheme(theme, false);
+try { if (localStorage.getItem(NAV_KEY) === '0') { $('.app').classList.remove('collapsed'); $('.side-toggle').setAttribute('aria-label', 'Collapse the sidebar'); } } catch (e) {}
+$('#view-as').innerHTML = VIEW_AS.map(u => `<option value="${u}">${esc(USERS[u].name)}, ${esc(USERS[u].roleLabel)}</option>`).join('');
+const [startId, startTab] = location.hash.slice(1).split('.');
+if (startId && findDemand(startId) && visibleDemands().includes(findDemand(startId))) openDemand(startId, startTab === 'details' ? 'details' : 'candidates'); else render();
+})();
+</script>

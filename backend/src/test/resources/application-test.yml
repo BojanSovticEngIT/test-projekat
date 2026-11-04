@@ -1,0 +1,9 @@
+spring:
+  task:
+    scheduling:
+      enabled: false
+
+logging:
+  level:
+    it.eng.wsm.skillmatrix: INFO
+    liquibase: WARN

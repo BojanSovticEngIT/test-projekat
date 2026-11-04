@@ -1,0 +1,23 @@
+{
+  "name": "skill-matrix-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test epic-*.spec.ts m1-regression.spec.ts --workers=1",
+    "test:headed": "E2E_HEADED=1 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "watch": "E2E_HEADED=1 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "watch:slow": "E2E_HEADED=1 E2E_SLOW_MO=6000 E2E_STEP_PAUSE=5000 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "watch:crawl": "E2E_HEADED=1 E2E_SLOW_MO=8000 E2E_STEP_PAUSE=6000 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "watch:glacial": "E2E_HEADED=1 E2E_SLOW_MO=12000 E2E_STEP_PAUSE=8000 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "watch:ui": "playwright test epic-*.spec.ts m1-regression.spec.ts --ui",
+    "watch:epic": "E2E_HEADED=1 playwright test --headed --workers=1",
+    "demo": "E2E_HEADED=1 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1",
+    "demo:debug": "E2E_HEADED=1 playwright test epic-*.spec.ts m1-regression.spec.ts --headed --workers=1 --debug",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "xlsx": "^0.18.5"
+  }
+}

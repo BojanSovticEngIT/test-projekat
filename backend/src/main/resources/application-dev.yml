@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/skillmatrix
+    username: skillmatrix
+    password: password
+  jpa:
+    show-sql: true
+  liquibase:
+    enabled: true
+
+logging:
+  level:
+    it.eng.wsm.skillmatrix: DEBUG
+    org.hibernate.SQL: DEBUG
+    liquibase: DEBUG
