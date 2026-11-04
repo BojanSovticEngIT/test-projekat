@@ -29,6 +29,7 @@ project: workforce-platform
 | **[RM]** | `README.md` | Module list |
 | **[WB]** | Workshop brief: Search & Discovery requirements, recorded as "Confirmed requirements (from the workshop brief)" in `docs/workforce-intelligence/12-stakeholder-decisions.md` §12.1 | S&D-specific requirements |
 | **[WR]** | Workshop requests of 4 Nov 2026 (cross-module search, alternatives, results-first UI) | Proposed requirements |
+| **[SH-1]** | Stakeholder decision, 4 Nov 2026: **semantic search is needed** in production. For the demo, the fixed related-terms list is sufficient | Verified decision (recorded by the team) |
 | **[AUD] / [REV]** | `docs/workforce-intelligence/13-search-discovery-audit.md`, `14-search-discovery-workshop-review.md` | Findings |
 | **[CODE]** | Repository code inspected on 4 Nov 2026 | Evidence of the current state only, **not** of business requirements |
 
@@ -151,13 +152,27 @@ Priority: **Must / Should / Could**. Priorities on proposed items are proposals.
 - Saved-search storage.
 - Applicant data fields.
 
-**What must stakeholders decide?** (§11) The top six:
-- what counts as a "Java developer" and the population denominator (SD-DEC-001/002);
-- whether must-haves are a hard stop (SD-DEC-006);
-- who may search and see what (SD-DEC-008/009/021/029);
-- whether S&D shows demands and recruiting figures (SD-DEC-028/030);
-- whether semantic search is needed (SD-DEC-010);
-- the AI provider and PII policy (SD-DEC-023/027).
+**What must stakeholders decide?** (§11) The most important open decisions:
+
+1. **How the system decides that someone is a "Java developer" (or any "X developer")** (SD-DEC-001, SD-DEF-005).
+   - Questions like "How many Java developers do we have?" need a rule for who counts. No such rule exists, in the specs or in the code.
+   - The data offers several possible signals:
+     - the Java skill level in the Skill Matrix (1–5, self-assessed or manager-validated);
+     - whether Java is the *primary* skill on a current project (engagement skills, Module 02);
+     - when Java was last used;
+     - the free-text job title.
+   - Each gives a different answer: 11 to 24 people in the demo data.
+   - **Missing:** an agreed rule saying which signal(s) count, at which minimum level, and whether unvalidated skills count.
+   - **Also missing:** the population for percentages, "X% of whom?" (SD-DEC-002): employees only or contractors too, heads or FTE.
+2. **Whether a failed must-have excludes a candidate or only lowers the score** (SD-DEC-006). Sources conflict (SD-CON-001/002).
+3. **Who may search, and what they may see** (SD-DEC-008/009/021/029).
+   - The demo works with assumptions, which are listed as assumptions, not as rules: SD-ASM-001–003 (§3.6) and the "current demo behaviour" column of the permission register (§5.3).
+   - **Needed:** approval or correction of each SD-PERM rule, the list of sensitive fields, and the minimum group size for statistics.
+4. **Whether Search shows demands and recruiting figures**, or leaves them to Module 03 (SD-DEC-028/030).
+5. **Semantic search: technology and content.** That semantic search is needed is **decided** (SD-DEC-010). Still open:
+   - which text it searches (project descriptions, demand texts, CVs if they become available);
+   - which technology (pgvector first, Azure AI Search for documents) (SD-DEC-032).
+6. **The AI provider, region and personal-data policy** (SD-DEC-023/027).
 
 **External dependencies.**
 - Module 01: skill data access, the skill-filter defect, taxonomy.
@@ -186,7 +201,7 @@ Priority: **Must / Should / Could**. Priorities on proposed items are proposals.
 | Experience and tenure | Shown | Not implemented | SD-DEC-004/005; skill start dates |
 | Statistics (count / %) | Shown | Not implemented | SD-DEC-001/002/009 |
 | AI Quick Search | Simulated | Not implemented | SD-DEC-027 (provider), SD-DEC-023 (PII) |
-| Semantic search | Not shown | Not implemented | SD-DEC-010 |
+| Semantic search (required [SH-1]) | Not shown (related-terms list only; sufficient for the demo) | Not implemented | Content source and technology (SD-DEC-032) |
 | General ranking | Shown | Not implemented | SD-DEC-020 |
 | Alternatives | Shown | Not implemented | SD-DEC-031 |
 | Demand matching | Shown (sample demands) | Not implemented | SD-DEC-006/007; Module 03 fields |
@@ -246,14 +261,20 @@ Each capability lists eight fields: current demo, existing backend support, veri
   - "e-commerce" works only through an industry tag.
 - **Backend support:** none.
 - **Production readiness:** Not implemented.
-- **Target:** only if approved. Meaning-based relevance over free text, used only to order or label results within hard filters.
+- **Need:** Verified. Semantic search is required in production [SH-1]; the demo's related-terms list is sufficient for the demo.
+- **Target:** meaning-based relevance over free text, used only to order or label results within hard filters (SD-FR-022).
 - **Missing:**
-  - a content source (no CV text is stored; the only free text is project notes and demand descriptions);
+  - a content source: no CV text is stored, and the only free text today is project notes and demand descriptions, which may be too thin;
   - embeddings;
-  - an index.
-- **Dependencies:** SD-DEC-010, SD-DEC-013.
-- **Decisions:** SD-DEC-010.
-- **Next steps:** decide the need with real example questions before any build (SD-RM-0.5).
+  - an index;
+  - a technology choice.
+- **Dependencies:** content availability; SD-DEC-013 (taxonomy).
+- **Decisions:** SD-DEC-032 (content source and technology).
+- **Next steps:**
+  - collect real example questions;
+  - profile the available free text;
+  - choose the technology (SD-RM-0.5);
+  - build in Phase 2 (SD-RM-2.2/2.3).
 
 ### SD-CAP-04 AI Quick Search (natural-language interpretation)
 - **Demo:** Simulated. A rule engine produces the structured output an LLM would:
@@ -593,20 +614,20 @@ Each capability lists eight fields: current demo, existing backend support, veri
 | SD-ARC-01 | Structured search runs on the existing **PostgreSQL** database | Proposed | No new infrastructure; current data; permissions in the same query; scale target ~1,000 employees [OS §11] |
 | SD-ARC-02 | Add **targeted indexes** where query plans show need (e.g. `employee_skill(skill_id, level)`, `allocation(employee_id, end_date)`, trigram on names) and a **search view** (person + current unit + current allocations + skills) | Proposed | Needs schema work aligned with Module 01/02 owners |
 | SD-ARC-03 | Tenure, durations and availability are **computed at query time** for a stated date | Availability: Verified rule [OS §6.1]. Others: Proposed | No stale copies; small extra computation |
-| SD-ARC-04 | **pgvector** only if semantic search is approved | Proposed (conditional) | Same database and permission filters; needs embeddings and content |
-| SD-ARC-05 | **Azure AI Search** only if CVs or documents must be indexed, or volume outgrows PostgreSQL | Proposed (conditional) | Managed semantic and document search; adds cost (indicative $74–245+/month per search unit, third-party list prices, unverified), a sync pipeline, and permission data in the index |
+| SD-ARC-04 | **pgvector** in the existing PostgreSQL as the first semantic search option (semantic search is required [SH-1]) | Proposed (technology not decided: SD-DEC-032) | Same database and permission filters; needs embeddings and enough free text |
+| SD-ARC-05 | **Azure AI Search** if CVs or documents must be indexed, or volume outgrows PostgreSQL | Proposed (alternative to SD-ARC-04) | Managed semantic and document search; adds cost (indicative $74–245+/month per search unit, third-party list prices, unverified), a sync pipeline, and permission data in the index |
 | SD-ARC-06 | If any derived index is introduced: event-driven updates via the outbox plus nightly reconciliation; permissions always resolved from the database at query time | Proposed | Only `engagement_skills_updated` exists today; skill, allocation and org events are Missing |
 
 **Requirements (technology-neutral)**
 - **SD-IDX-001** (Must · Proposed) — all structured criteria are exact predicates with deterministic results; target SD-NFR-001.
 - **SD-IDX-002** (Must · Verified for availability [OS §6.1]; Proposed for durations) — computed, not stored.
 - **SD-IDX-003** (Should · Proposed) — case- and diacritic-insensitive, typo-tolerant name and project search.
-- **SD-IDX-004** (Could · Blocked by SD-DEC-010) — semantic index.
+- **SD-IDX-004** (Must · need Verified [SH-1]; Blocked by SD-DEC-032) — semantic index over the agreed free-text content.
 - **SD-IDX-005** (Must · Verified) — append-only history available; inactive people excluded from results [OS §3.3, §3.7].
 - **SD-IDX-006** (Must · Proposed) — structured results reflect committed changes immediately; derived indexes declare their staleness (SD-DEC-019).
 - **SD-IDX-007** (Must if a derived index exists · Proposed) — change propagation per SD-ARC-06.
 - **SD-IDX-008** (Must · Verified principle [OS §11 "query layer: scope predicates"]) — scope applied inside retrieval, before ranking, counting and paging.
-- **SD-IDX-009** (Could · Blocked by SD-DEC-010) — hybrid search: hard filters first, semantic relevance only orders or labels.
+- **SD-IDX-009** (Must · need Verified [SH-1]; Blocked by SD-DEC-032) — hybrid search: hard filters first, semantic relevance only orders or labels.
 
 **Searchable entities.** See SD-INT-01–03 for fields. Free text (project notes, demand descriptions, skill comments) is the only semantic-search candidate. **No CV text is stored** [CODE].
 
@@ -621,8 +642,8 @@ Each capability lists eight fields: current demo, existing backend support, veri
 |---|---|---|
 | Natural-language interpretation → structured criteria | Demo: Simulated. Production: Not implemented | Contract = the demo's structured JSON |
 | Technology taxonomy, synonyms, related concepts | Demo: Shown (fixed list `intelligenceRelatedTerms.ts`). Production: Missing | Owner proposed: Module 01 (SD-DEC-013) |
-| Embeddings and semantic retrieval | Not implemented | Blocked by SD-DEC-010 |
-| Hybrid search | Not implemented | Blocked by SD-DEC-010 |
+| Embeddings and semantic retrieval | Not implemented. Need Verified [SH-1] | Blocked by SD-DEC-032 (content, technology) |
+| Hybrid search | Not implemented. Need Verified [SH-1] | Blocked by SD-DEC-032 |
 | Ranking and explainability | Demo: Shown. Production: Not implemented | §8 |
 
 - **SD-AI-001** (Must · Verified principle [WB; OS §11]) — the LLM receives only the question and catalogue vocabulary, never employee records.
@@ -754,7 +775,7 @@ Columns: priority · knowledge status · production implementation · demo · mo
 | SD-FR-018 | Workforce type | Should | Proposed | Partially impl. (`/api/employees` filter) | Shown | 01 | SD-DEC-003 |
 | SD-FR-019 | Seniority / range code (restricted) | Could | Assumed | Not impl. | Shown | 02 | SD-DEC-008 |
 | SD-FR-020 | Related-term expansion (fixed list) | Should | Proposed | Not impl. | Shown | 04/01 | SD-DEC-013 |
-| SD-FR-021 | Semantic relevance over free text | Could | Proposed · Blocked | Not impl. | Not shown | 04 | SD-DEC-010 |
+| SD-FR-021 | Semantic relevance over free text | Must | Verified need [SH-1] · Blocked (content, technology) | Not impl. | Not shown (related terms only; enough for the demo) | 04 | SD-DEC-032 |
 | SD-FR-022 | Hard constraints never weakened | Must | Verified [WB] | Not impl. | Shown | 04 | — |
 | SD-FR-030 | Natural-language input EN + SR | Must | Verified [WB] | Not impl. | Simulated | 04 | SD-DEC-027 |
 | SD-FR-031 | Visible interpretation | Must | Verified [WB] | Not impl. | Shown | 04 | — |
@@ -873,9 +894,11 @@ Business value, behaviour and acceptance criteria. Sources and statuses are in �
   - AC1: expansion appears as editable "any of" criteria labelled "fixed term list, not semantic search".
   - AC2: an explicitly named skill takes precedence.
   - AC3: role words ("backend") expand only when no technology is named.
-- **SD-FR-021** (if approved):
+- **SD-FR-021** — *Value:* finds people by described experience ("built e-commerce platforms") even without exact skill names. Required [SH-1].
   - AC1: semantic relevance only orders or labels within the structured result, or appears in a separate "related" list.
   - AC2: each semantic match shows the matching text excerpt.
+  - AC3: the agreed example questions (collected in SD-RM-0.5) return relevant people that exact search misses, without adding anyone who fails a hard filter.
+  - *Demo AC: not required; the related-terms list is sufficient.*
 - **SD-FR-022** — AC: must-haves, levels, years, availability, allocation, organisation filters and permissions are hard constraints. No relevance mechanism adds a person who fails them or removes one who passes.
 
 **C.4 AI Quick Search**
@@ -1036,7 +1059,7 @@ Business value, behaviour and acceptance criteria. Sources and statuses are in �
 | Example | "Java developers", "more than 3 years Java", "available", "on project X" | "JVM technologies", "cloud technologies" | "people who built e-commerce platforms" (meaning) |
 | Mechanism | Predicates | Fixed lookup to catalogue skills | Similarity over free text |
 | Effect | Defines the result set | Becomes editable criteria | Orders or labels within the set; or a separate list |
-| Status | Demo: Shown; Prod: Not impl. | Demo: Shown; Prod: Not impl. | Not implemented; Blocked (SD-DEC-010) |
+| Status | Demo: Shown; Prod: Not impl. | Demo: Shown; Prod: Not impl. | Required [SH-1]; Not implemented; Blocked (SD-DEC-032) |
 
 Rules:
 - **E-1:** explicit constraints are hard filters (SD-FR-022).
@@ -1092,7 +1115,7 @@ No estimates or dates. "Independent" means the item can start without open decis
 | SD-RM-0.2 | Validate permission matrix (§5.3) | Approved role × data matrix | Must | HR, PMO, DPO | Leakage if guessed | Every SD-PERM row has a decision | Not started | Yes |
 | SD-RM-0.3 | Confirm data ownership and S&D boundaries (§3) | Agreed SD-B rules; SD-CON-008 resolved | Must | Module 01–03 owners | Duplicate demand search | SD-DEC-028/030 decided | Not started | Yes |
 | SD-RM-0.4 | Integration contracts: Module 01 skill access, Module 03 demand criteria fields, applicant fields, Module 05 link | Agreed APIs / schema changes | Must | Module owners; client | External dependency | Contract documents per SD-INT | Not started | Yes |
-| SD-RM-0.5 | Semantic search need: collect real questions; decide SD-DEC-010 | Go / no-go | Should | Stakeholders | Building unneeded infrastructure | Decision recorded with examples | Not started | Yes |
+| SD-RM-0.5 | Semantic search preparation (need decided [SH-1]): collect real example questions; profile the available free text; choose the technology (SD-DEC-032) | Agreed content source, technology and acceptance questions | Must | Stakeholders; data owners | Too little free text for useful results | Example set and decision recorded | Not started | Yes |
 | SD-RM-0.6 | AI provider, region, PII and budget (SD-DEC-023/027) | Approved AI setup | Must (for AI) | DPO, architecture | Legal blocker | Decision recorded | Not started | Yes |
 
 ### Phase 1 — Production foundation
@@ -1111,8 +1134,8 @@ No estimates or dates. "Independent" means the item can start without open decis
 | ID | Scope | Outcome | Prio | Dependencies | Risks | Acceptance | Status | Can start |
 |---|---|---|---|---|---|---|---|---|
 | SD-RM-2.1 | General ranking with agreed factors | SD-FR-045, SD-RNK | Should | SD-DEC-020 | Inconsistent ranking | Deterministic order; reasons shown | Not started | Blocked by SD-DEC-020 to finish |
-| SD-RM-2.2 | Semantic search (if approved) | SD-FR-021 | Could | SD-RM-0.5; content | Weak content | Agreed example questions improve without breaking hard filters | Not started | Blocked |
-| SD-RM-2.3 | Hybrid search (if approved) | SD-IDX-009 | Could | 2.2 | — | Hard filters unchanged | Not started | Blocked |
+| SD-RM-2.2 | Semantic search (required [SH-1]) | SD-FR-021 | Must | SD-RM-0.5; content | Weak content | Agreed example questions improve without breaking hard filters | Not started | Blocked by SD-DEC-032 |
+| SD-RM-2.3 | Hybrid search | SD-IDX-009 | Must | 2.2 | — | Hard filters unchanged | Not started | Blocked by 2.2 |
 | SD-RM-2.4 | AI Quick Search with real LLM, schema validation, fallback, cost controls | SD-FR-030–037, SD-AI | Must | SD-RM-0.6; 1.1 | Misinterpretation (SD-RSK-06) | §12 AI scenarios pass; invalid output rejected | Not started | Blocked by 0.6 |
 | SD-RM-2.5 | Alternatives from the backend | SD-FR-047 | Should | 1.2; SD-DEC-031 | Users read alternatives as matches | SD-FR-047 AC | Not started | Yes |
 | SD-RM-2.6 | Related-terms list as maintained data | SD-FR-020, SD-NFR-012 | Should | SD-DEC-013 | Stale list | Editable without code change | Not started | After 0.3 |
@@ -1141,7 +1164,7 @@ No estimates or dates. "Independent" means the item can start without open decis
 - Then 1.3–1.5 and 3.2.
 - Then 2.4 and 2.5.
 - Then 3.1 (once Module 03 fields exist).
-- Semantic search (2.2/2.3) only after a go decision.
+- Semantic search (2.2/2.3) is required [SH-1]; it starts once SD-RM-0.5 has fixed the content source and technology.
 
 ---
 
@@ -1162,13 +1185,14 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 | SD-RSK-09 | Applicant data limitations | No application date, single name field [CODE] | High (verified) | Medium | SD-DEC-011 or drop the requirement |
 | SD-RSK-10 | Missing CV Generation integration | Module 05 absent | High (verified) | Low for S&D | Defer the link |
 | SD-RSK-11 | Demo mistaken for production | Mock API enabled by default in all builds [CODE `mockMode.ts`] | Medium | High (wrong decisions) | Labels; disable mocks in production builds |
+| SD-RSK-13 | Semantic search is required [SH-1], but there may be too little free text to search (no CVs stored; short project notes and demand descriptions) | Schema [CODE]; content volume not measured | To assess (SD-RM-0.5) | High for SD-FR-021 | Profile content early; agree the content source (SD-DEC-032); consider CV text if Module 05 or HR can provide it |
 | SD-RSK-12 | Leave not modelled → availability overstated | No leave entity [CODE]; required by [OS §3.5] | High (verified) | Medium | Module 02 leave work; disclose |
 
 ---
 
 ## 11. Decisions and source conflicts
 
-### 11.1 Decision register (all **Missing** until answered)
+### 11.1 Decision register (all **Missing** until answered, except where marked Decided)
 
 | ID | Decision | Why it matters | Options | Recommendation | Owner (proposed) |
 |---|---|---|---|---|---|
@@ -1181,7 +1205,7 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 | SD-DEC-007 | Where weights and minimum years live | Persisted matching | Module 03 extension / S&D what-if only | Module 03 extension | Module 03 owner |
 | SD-DEC-008 | Sensitive fields per role | Field security | Field list | Range code HR + Admin only | HR + PMO |
 | SD-DEC-009 | Applicant visibility; minimum group size | Privacy | Roles; 3/5/10 | 5 for aggregate-only roles | HR + DPO |
-| SD-DEC-010 | Semantic search scope and technology | Cost, effort | None / pgvector / Azure AI Search | Not in first release; pgvector first if needed | Product + architecture |
+| SD-DEC-010 | Is semantic search needed? | Cost, effort | Yes / no | **Decided: yes, in production; not needed for the demo [SH-1]** | Stakeholders (decided 4 Nov 2026) |
 | SD-DEC-011 | Applicant source fields | Monthly count, names | Source change / derived / drop | Request source change | Client + Module 03 |
 | SD-DEC-012 | New hires searchable | Population | Yes marked / no | Yes, marked | PMO |
 | SD-DEC-013 | Related-terms / taxonomy owner | Quality | Module 01 / S&D | Module 01 | Module 01 owner |
@@ -1202,6 +1226,7 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 | SD-DEC-028 | S&D returns demands at all, and to whom | Overlap with Module 03 | Yes (linking to 03) / matching only | Yes, demand read roles | PMO + Module 03 owner |
 | SD-DEC-029 | PMO breadth (applicants, seniority, cost) | Consistency vs privacy | SD-ASM-003 / wider | SD-ASM-003 | PMO + HR + DPO |
 | SD-DEC-030 | Recruiting figure in S&D | Boundary, privacy | Keep count / remove | Keep count with link if SD-DEC-011 resolved | HR + PMO |
+| SD-DEC-032 | Semantic search content source and technology | Results quality, cost | Content: project descriptions, demand texts, CVs (if available). Technology: pgvector / Azure AI Search | pgvector first; Azure AI Search if CV documents are indexed | Product + architecture |
 | SD-DEC-031 | Alternative suggestion policy | Users may read alternatives as matches | SD-DEF-015 / fewer / none | SD-DEF-015 | PMO |
 
 ### 11.2 Source conflicts
@@ -1230,7 +1255,7 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 | SD-VAL-001 | Exact | Java ≥ 3, more than 3 y, Software Factory, ≥ 50% free | 7 people with reasons | Hand-checked list on real data | FR-010–013, 017 |
 | SD-VAL-002 | Boundary | "more than 3" vs "at least 3" | "at least" ≥ "more than" | Same | FR-012 |
 | SD-VAL-003 | Related terms | "Backend developers experienced in JVM technologies" | Any of Java, Kotlin, Spring Boot; no hidden text filter | Same with approved list | FR-020, 022, 034 |
-| SD-VAL-004 | Semantic | "Experience building e-commerce platforms" | Structured industry filter only | Not testable until SD-DEC-010 | FR-021 |
+| SD-VAL-004 | Semantic | "Experience building e-commerce platforms" | Structured industry filter only (sufficient for the demo) | Relevant people found via free text, none violating hard filters; testable once SD-DEC-032 is decided | FR-021 |
 | SD-VAL-005 | Combined | "Java developers with e-commerce experience available next month" | All three criteria applied | Same | FR-022, 030–032 |
 | SD-VAL-006 | Ranking | SD-VAL-001 sorted by relevance, twice | Identical order with reasons | Same with agreed factors | FR-045, RNK-010 |
 | SD-VAL-007 | Percentage | "What percentage of our employees are Java developers?" | 20% = 18 of 90; alternatives 24/18/11/17/21 | Agreed definition on real data | FR-050–053 |
@@ -1264,3 +1289,4 @@ Likelihood and impact are stated only where evidence exists; otherwise "To asses
 8. The S&D / Module 03 demand-search boundary (SD-CON-008) and the recruiting figure in S&D (SD-DEC-030).
 9. NFR targets beyond [OS §11] and AI cost figures are unverified estimates.
 10. Roadmap "can start" judgements assume that module owners will agree the contracts in SD-RM-0.4.
+11. The semantic-search decision [SH-1] is recorded by the team from the stakeholder discussion; no written stakeholder sign-off is stored in the repository.
