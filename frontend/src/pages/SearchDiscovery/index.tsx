@@ -242,6 +242,8 @@ function SearchDiscoveryPage(): JSX.Element {
   const runCounter = useRef(0);
   const recorded = useRef(new Set<number>());
   const resultsRef = useRef<HTMLDivElement | null>(null);
+  const answerRef = useRef<HTMLDivElement | null>(null);
+  const focusedRun = useRef(0);
 
   const interpret = useInterpret();
   const recordRun = useRecordRun();
@@ -321,6 +323,20 @@ function SearchDiscoveryPage(): JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
+
+  // After a user-initiated search, bring the result into view and give it keyboard focus.
+  // Questions answered by a card (number, comparison, ranking, demands) land on the card; people searches on the table.
+  // Paging, sorting and the first page load (record: false) do not move the page.
+  useEffect(() => {
+    if (!run?.record || !search.data || search.isPlaceholderData || focusedRun.current === run.runId) return;
+    focusedRun.current = run.runId;
+    const target = run.answerSpec && answerRef.current ? answerRef.current : resultsRef.current;
+    if (!target) return;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.focus({ preventScroll: true });
+    });
+  }, [run, search.data, search.isPlaceholderData]);
 
   useEffect(() => {
     if (!run?.record || !search.data || search.isPlaceholderData || recorded.current.has(run.runId)) return;
@@ -878,7 +894,7 @@ function SearchDiscoveryPage(): JSX.Element {
       </Paper>
 
       {run?.answerSpec ? (
-        <Box sx={{ mb: 2 }}>
+        <Box ref={answerRef} tabIndex={-1} aria-label="Answer" sx={{ mb: 2, scrollMarginTop: 80, '&:focus': { outline: 'none' } }}>
           <AnswerPanel answer={answer.data} loading={answer.isFetching} error={answer.isError} onShowPeople={showPeople} />
           {!peopleListVisible ? (
             <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
@@ -901,7 +917,7 @@ function SearchDiscoveryPage(): JSX.Element {
       ))}
 
       {run && peopleListVisible ? (
-        <Box ref={resultsRef}>
+        <Box ref={resultsRef} tabIndex={-1} aria-label="Search results" sx={{ scrollMarginTop: 80, '&:focus': { outline: 'none' } }}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1} sx={{ mb: 1 }}>
             <Box>
               <Typography variant="h6" component="h2" fontWeight={600}>
