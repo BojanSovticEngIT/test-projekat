@@ -63,6 +63,9 @@ function IntelligenceDashboardPage(): JSX.Element {
         breadcrumbs={[{ label: 'Workforce Intelligence', to: '/intelligence' }, { label: 'Dashboard' }]}
         actions={<ExportMenu getReport={buildReport} disabled={!data} />}
       />
+      <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+        Reports preview: standing dashboards belong to the Reports &amp; Workforce Analytics module, not to Search &amp; Discovery. Shown for context only; ask workforce questions in Search &amp; Discovery.
+      </Alert>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
         <TextField select size="small" label="Business unit" value={businessUnitId ?? ''} sx={{ minWidth: 220 }} onChange={(event) => setBusinessUnitId(event.target.value || null)}>
           <MenuItem value="">All business units</MenuItem>

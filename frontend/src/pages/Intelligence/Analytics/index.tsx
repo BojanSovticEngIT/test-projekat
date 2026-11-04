@@ -337,6 +337,9 @@ function IntelligenceAnalyticsPage(): JSX.Element {
         description="How long people stay on projects and how long they have used their skills. Thresholds are configurable."
         breadcrumbs={[{ label: 'Workforce Intelligence', to: '/intelligence' }, { label: 'Experience analytics' }]}
       />
+      <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+        Reports preview: these standing analytics belong to the Reports &amp; Workforce Analytics module. Search &amp; Discovery answers the same questions on demand (for example &ldquo;How many people have been on the same project for more than 2 years?&rdquo;).
+      </Alert>
       <Paper variant="outlined" sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, value: string) => setParams({ tab: value })}>
           <Tab value="tenure" label="Project tenure" />

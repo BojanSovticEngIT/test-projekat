@@ -185,7 +185,9 @@ export const intelligenceHandlers = [
     const context =
       typeof input.context === 'string' ? input.context.trim().slice(0, 500) : '';
     const fullQuery = context ? `${context} ${query}` : query;
-    const parsed = parseQuery(fullQuery);
+    const parsed = parseQuery(fullQuery, undefined, {
+      demandAccess: access.rule.scope.canMatch,
+    });
     // Simulated model latency so the demo shows the "interpreting" state; the rules themselves are instant.
     if (!parsed.simple) await delay(650);
     const pricing = getPricing();
@@ -250,7 +252,14 @@ export const intelligenceHandlers = [
   http.post(`${BASE}/answer`, async ({ request }) => {
     const access = authorize(request, (scope) => scope.canSearchPeople);
     if (access.denied) return access.denied;
-    const answer = answerQuery(access.rule, await body(request));
+    const input = await body(request);
+    // Same feature rule as POST /matching: must-have / optional matching needs the matching right.
+    if (input.intent === 'DEMAND_MATCH' && !access.rule.scope.canMatch)
+      return HttpResponse.json(
+        { message: 'You do not have permission to do this.' },
+        { status: 403 }
+      );
+    const answer = answerQuery(access.rule, input);
     return answer
       ? HttpResponse.json(answer)
       : badRequest('Nothing to calculate for this question.');

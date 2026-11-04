@@ -37,6 +37,7 @@ import {
   verticalName,
 } from './intelligenceCore';
 import { emptyFilters } from './intelligenceSearch';
+import { RELATED_TERMS, type RelatedTerm } from './intelligenceRelatedTerms';
 
 export const INTENT_LABELS: Record<QueryIntent, string> = {
   EMPLOYEE_SEARCH: 'Find employees',
@@ -144,7 +145,9 @@ const STOPWORDS = new Set(
     'should would could must-have must have optional preferably preferred ideally bonus plus nice mandatory there are is was were ' +
     'currently today now right away asap soon next month week when ends end ending finishes finish over after once his her people\'s ' +
     'unallocated allocated allocation bench idle assignment assignments role roles tell let see view display get return show me kind ' +
-    'type types level levels breakdown statistics stats figure figures numbers data about across within inside split by per'
+    'type types level levels breakdown statistics stats figure figures numbers data about across within inside split by per ' +
+    'modern application applications app apps building build built builds solution solutions familiar exposure related ' +
+    'similar like stack ecosystem languages language frameworks framework tools tooling development developing'
   ).split(/\s+/)
 );
 
@@ -172,24 +175,8 @@ const LEVEL_WORDS: Record<string, number> = {
 const ROLE_NOUNS =
   /\b(developers?|engineers?|programmers?|devs?|specialists?|experts?|architects?|consultants?|professionals?)\b/;
 
-// Groups the user can ask for by name ("cloud technologies").
-const CATEGORY_PHRASES: { pattern: RegExp; label: string; skills: string[] }[] = [
-  {
-    pattern: /\bcloud(?: technolog\w*| platforms?| providers?| services| computing| experience| skills?)?\b/,
-    label: 'Cloud technologies (AWS, Azure, Google Cloud)',
-    skills: ['aws', 'azure', 'gcp'],
-  },
-  {
-    pattern: /\bfront[- ]?end(?! coe)(?: technolog\w*| frameworks?)?\b/,
-    label: 'Frontend frameworks (React, Angular, Vue.js)',
-    skills: ['react', 'angular', 'vue'],
-  },
-  {
-    pattern: /\bcontaineri[sz]ation(?: technolog\w*)?\b|\bcontainer technolog\w*|\bdevops (?:tools|technolog\w*|skills)\b/,
-    label: 'Containers & DevOps (Docker, Kubernetes, Terraform)',
-    skills: ['docker', 'k8s', 'terraform'],
-  },
-];
+// Words that lower the default level: "familiar with Vue" means any level, even for a developer role.
+const CASUAL_WORDS = /\b(familiar|exposure|basic knowledge|some experience|knows?|knowledge of|heard of)\b/;
 
 interface Phrase<T> {
   text: string;
@@ -234,13 +221,13 @@ const PROJECT_PHRASES = phrases(
   }))
 );
 
-// Words that occur in the data (names, titles, projects, clients, units). Only these may become a free-text filter;
-// anything else is reported as "not understood" instead of silently filtering everyone out.
+// Words that identify something specific in the data: person names, project names and clients. Only these may become
+// a free-text filter. Generic title words ("backend", "analyst") never become a hidden filter; they are either
+// interpreted (related terms, seniority) or reported as "not understood".
 const DATA_WORDS = new Set(
   [
-    ...INTEL_EMPLOYEES.flatMap((person) => [person.name, person.title]),
+    ...INTEL_EMPLOYEES.map((person) => person.name),
     ...INTEL_PROJECTS.flatMap((project) => [project.name, project.client ?? '']),
-    ...INTEL_UNITS.map((unit) => unit.name),
   ]
     .flatMap((text) => normalize(text).split(/[^a-z0-9#.+/-]+/))
     .filter((word) => word.length >= 3 && !STOPWORDS.has(word))
@@ -283,7 +270,9 @@ const CONNECTOR = /^\s*(?:,|and|or|&|\/|plus)?\s*(?:skills?\s*)?(?:,|and|or|&)?\
 
 export const parseQuery = (
   text: string,
-  today = startOfToday()
+  today = startOfToday(),
+  // Demo permission convention: demand-related interpretation needs the matching right (ScopeInfo.canMatch).
+  { demandAccess = true }: { demandAccess?: boolean } = {}
 ): ParsedQuery => {
   const filters = emptyFilters();
   const notes: string[] = [];
@@ -405,6 +394,13 @@ export const parseQuery = (
   takeAll(
     /\b(?:our|the) (?:new|next|upcoming|latest) (?:project|demand|engagement)\b/,
     () => {
+      // Demand details are only resolved for roles with demand access (same rule as the matching page).
+      if (!demandAccess) {
+        notes.push(
+          '"Our new project" refers to staffing demands, which your role cannot see. Name the technologies instead.'
+        );
+        return;
+      }
       const demand = [...INTEL_DEMANDS].sort(
         (a, b) => a.createdDaysAgo - b.createdDaysAgo
       )[0];
@@ -474,6 +470,16 @@ export const parseQuery = (
     )
   );
 
+  // Related terms ("JVM technologies", "backend") are found before single skills so that "JavaScript frameworks"
+  // is not read as the JavaScript skill. Whether they are used is decided after the skills are known.
+  const relatedFound: { term: RelatedTerm; index: number; text: string }[] = [];
+  RELATED_TERMS.forEach((term) => {
+    const match = term.pattern.exec(work);
+    if (!match) return;
+    relatedFound.push({ term, index: match.index, text: match[0].trim() });
+    blank(match.index, match[0].length);
+  });
+
   const hits: SkillHit[] = [];
   SKILL_PHRASES.forEach((phrase) => {
     const regex = phraseRegex(phrase.text);
@@ -525,33 +531,44 @@ export const parseQuery = (
     }
   });
 
-  // Category phrases ("cloud technologies") expand to a group of skills when no skill of that group was named.
+  // Related-term expansion (a fixed list, not semantic search). Explicitly named skills always win: an expansion
+  // never replaces or widens a named skill. Role words ("backend") only expand when nothing more specific was named.
   let categoryUsed: string | null = null;
-  CATEGORY_PHRASES.forEach((category) => {
-    const match = category.pattern.exec(work);
-    if (!match) return;
-    const named = hits.some((hit) => category.skills.includes(hit.criterion.skillId));
-    blank(match.index, match[0].length);
-    if (named) return;
+  if (relatedFound.length) {
+    const technology = relatedFound.filter((item) => !item.term.role);
     if (hits.length) {
-      notes.push(
-        `"${match[0].trim()}" together with other skills: add the specific technology (for example ${category.skills.map(skillName).join(' or ')}) in the criteria.`
+      relatedFound.forEach((item) =>
+        notes.push(
+          item.term.role
+            ? `"${item.text}" was read as the kind of role; the named skills decide the search.`
+            : `"${item.text}" was not expanded because specific skills were named. Add ${item.term.skills.map(skillName).join(', ')} in the criteria if you want them.`
+        )
       );
-      return;
+    } else {
+      const used = technology.length ? technology : relatedFound;
+      relatedFound
+        .filter((item) => !used.includes(item))
+        .forEach((item) => notes.push(`"${item.text}" was read as the kind of role; "${used.map((entry) => entry.text).join('", "')}" sets the skills.`));
+      categoryUsed = used.map((item) => item.term.term).join(' + ');
+      const skillIds = [...new Set(used.flatMap((item) => item.term.skills))];
+      skillIds.forEach((skillId) =>
+        hits.push({
+          criterion: { skillId, minLevel: 0, minYears: null, yearsMode: 'AT_LEAST' },
+          start: used[0].index,
+          end: used[0].index + used[0].text.length,
+          role: null,
+          explicitLevel: false,
+        })
+      );
+      used.forEach((item) =>
+        recognized.push(`Related terms: ${item.term.term} → any of ${item.term.skills.map(skillName).join(', ')}`)
+      );
+      notes.push(
+        'Related terms were expanded from a fixed, maintained list of technologies (keyword expansion, not semantic search). Edit the skills in the criteria if the list does not fit.'
+      );
+      semantic = true;
     }
-    categoryUsed = category.label;
-    category.skills.forEach((skillId) =>
-      hits.push({
-        criterion: { skillId, minLevel: 0, minYears: null, yearsMode: 'AT_LEAST' },
-        start: match.index,
-        end: match.index + match[0].length,
-        role: null,
-        explicitLevel: false,
-      })
-    );
-    recognized.push(`Any of: ${category.label}`);
-    semantic = true;
-  });
+  }
 
   // ---- generic "N years" phrases: tie to the nearest preceding skill (or the next one)
   takeAll(
@@ -559,7 +576,7 @@ export const parseQuery = (
     (match) => {
       const owner =
         [...hits].filter((hit) => !categoryUsed && hit.start < match.index).sort((a, b) => b.start - a.start)[0] ??
-        [...hits].filter((hit) => !categoryUsed).sort((a, b) => a.start - b.start)[0];
+        [...hits].filter(() => !categoryUsed).sort((a, b) => a.start - b.start)[0];
       if (owner && !owner.criterion.minYears) {
         owner.criterion.minYears = toNumber(match[2]);
         owner.criterion.yearsMode = match[3] ? 'AT_LEAST' : yearsMode(match[1]);
@@ -590,16 +607,24 @@ export const parseQuery = (
       ordered[index].role = ordered[index + 1].role;
   }
   const hasOptional = ordered.some((hit) => hit.role === 'OPTIONAL');
-  const isMatch = !categoryUsed && (hasOptional || (explicitMatch && ordered.some((hit) => hit.role === 'MUST')));
+  const asksForMatch = !categoryUsed && (hasOptional || (explicitMatch && ordered.some((hit) => hit.role === 'MUST')));
+  // Must-have / optional ranking follows the matching page permission. Without it the search uses the must-have
+  // skills as plain filters and ignores the optional ones.
+  const isMatch = asksForMatch && demandAccess;
+  if (asksForMatch && !demandAccess)
+    notes.push(
+      'Must-have / optional ranking is only available to roles with demand matching access. Showing people with the must-have skills; optional skills were not used.'
+    );
 
-  // Default level: a role noun ("Java developers") means professional level 3+; otherwise any level counts.
-  const defaultLevel = roleNoun ? 3 : 1;
+  // Default level: a role noun ("Java developers") means professional level 3+; otherwise, or with words such as
+  // "familiar with", any level counts.
+  const defaultLevel = roleNoun && !CASUAL_WORDS.test(source) ? 3 : 1;
   ordered.forEach((hit) => {
     if (!hit.explicitLevel) hit.criterion.minLevel = defaultLevel;
   });
   const mustHits = ordered.filter((hit) => hit.role !== 'OPTIONAL');
   const optionalHits = ordered.filter((hit) => hit.role === 'OPTIONAL');
-  (isMatch ? mustHits : ordered).forEach((hit) => {
+  (asksForMatch ? mustHits : ordered).forEach((hit) => {
     if (!filters.skills.some((item) => item.skillId === hit.criterion.skillId))
       filters.skills.push(hit.criterion);
   });
@@ -613,7 +638,9 @@ export const parseQuery = (
     }`;
   if (!categoryUsed)
     ordered.forEach((hit) =>
-      recognized.push(`${isMatch ? (hit.role === 'OPTIONAL' ? 'Optional: ' : 'Must-have: ') : ''}${skillText(hit.criterion)}`)
+      recognized.push(
+        `${asksForMatch ? (hit.role === 'OPTIONAL' ? (isMatch ? 'Optional: ' : 'Optional (not used): ') : 'Must-have: ') : ''}${skillText(hit.criterion)}`
+      )
     );
 
   // ---- places, units, industries
@@ -963,8 +990,10 @@ const buildStructured = (input: {
     out.compare = input.compareIds.map((id) => skillName(id));
     out.metrics = ['count', 'percentage', 'advanced_level', 'average_years', 'available_now'];
   } else if (filters.skills.length) {
-    if (input.categoryUsed) out.anyOf = filters.skills.map(skillJson);
-    else if (filters.skillMatch === 'ANY') out.anyOf = filters.skills.map(skillJson);
+    if (input.categoryUsed) {
+      out.anyOf = filters.skills.map(skillJson);
+      out.expandedFrom = { relatedTerms: input.categoryUsed, method: 'fixed_term_list' };
+    } else if (filters.skillMatch === 'ANY') out.anyOf = filters.skills.map(skillJson);
     else out.mustHave = filters.skills.map(skillJson);
   }
   if (input.optionalSkills.length) out.optional = input.optionalSkills.map(skillJson);

@@ -256,13 +256,16 @@ function CandidateCard({
   weights,
   selected,
   onToggle,
-  selectDisabled
+  selectDisabled,
+  proposal
 }: {
   candidate: CandidateMatch;
   weights: MatchingWeights;
   selected: boolean;
   onToggle: () => void;
   selectDisabled: boolean;
+  // Hand-off to Demand Management; null when the demand is not a stored demand (e.g. criteria from AI search).
+  proposal: { proposed: boolean; onPropose: () => void } | null;
 }): JSX.Element {
   return (
     <Accordion variant="outlined" disableGutters>
@@ -368,6 +371,17 @@ function CandidateCard({
                 Relevant projects: {candidate.relevantProjects.join('; ')}
               </Typography>
             ) : null}
+            {candidate.eligible && proposal ? (
+              <Box sx={{ mt: 1.5 }}>
+                {proposal.proposed ? (
+                  <Chip color="success" icon={<CheckCircleOutlineIcon />} label="Proposed to Demand Management (demo)" />
+                ) : (
+                  <Button variant="outlined" size="small" onClick={proposal.onPropose}>
+                    Propose for this demand
+                  </Button>
+                )}
+              </Box>
+            ) : null}
           </Grid>
         </Grid>
       </AccordionDetails>
@@ -388,6 +402,9 @@ function DemandMatchingPage(): JSX.Element {
   const [sortKey, setSortKey] = useState<SortKey>('SCORE');
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
+  // Demo only: proposals are remembered on this screen; nothing is sent to Demand Management.
+  const [proposed, setProposed] = useState<string[]>([]);
+  const [proposing, setProposing] = useState<CandidateMatch | null>(null);
   const matching = useMatching(demand, weights);
   const result = matching.data;
 
@@ -411,6 +428,11 @@ function DemandMatchingPage(): JSX.Element {
       selected={compareIds.includes(candidate.employeeId)}
       selectDisabled={compareIds.length >= 4}
       onToggle={() => toggleCompare(candidate.employeeId)}
+      proposal={
+        demand && !demand.id.startsWith('custom')
+          ? { proposed: proposed.includes(`${demand.id}:${candidate.employeeId}`), onPropose: () => setProposing(candidate) }
+          : null
+      }
     />
   );
 
@@ -637,6 +659,33 @@ function DemandMatchingPage(): JSX.Element {
         onClose={() => setCompareOpen(false)}
         candidates={compareIds.map((id) => allCandidates.find((item) => item.employeeId === id)).filter((item): item is CandidateMatch => Boolean(item))}
       />
+      <Dialog open={proposing !== null && demand !== null} onClose={() => setProposing(null)} maxWidth="sm" fullWidth aria-labelledby="propose-title">
+        <DialogTitle id="propose-title">Propose {proposing?.name} for {demand?.code}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" paragraph>
+            Search &amp; Discovery only proposes the person. Demand Management owns everything after that: the candidate pipeline, interviews, approvals and the decision.
+          </Typography>
+          <Typography variant="subtitle2">In production this calls the existing Demand Management API</Typography>
+          <Box component="pre" sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1, fontSize: 13, overflowX: 'auto' }}>
+            {`POST /api/demands/{demandId}/candidates\n${JSON.stringify({ type: 'INTERNAL', employeeIds: [proposing?.employeeId ?? ''] }, null, 2)}`}
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            The backend records the candidate with source &ldquo;Bench search (Module 4)&rdquo;. Demo: the demands here are sample data, so the proposal is only remembered on this screen and nothing is sent.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProposing(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (proposing && demand) setProposed((current) => [...current, `${demand.id}:${proposing.employeeId}`]);
+              setProposing(null);
+            }}
+          >
+            Propose (demo)
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -214,19 +214,22 @@ export const navigationModules: NavigationModule[] = [
     label: 'Workforce Intelligence',
     path: '/intelligence',
     icon: <TravelExploreOutlinedIcon />,
-    description: 'Analytics, demand matching, recruiting figures, AI architecture and search costs.',
+    description: 'Demand matching, recruiting figures, AI architecture and search costs. Analytics previews belong to Reports & Workforce Analytics.',
     items: [
       {
-        label: 'Dashboard',
+        // Belongs to Reports & Workforce Analytics (Module 06); kept off the sidebar, reachable from the module page.
+        label: 'Dashboard (Reports preview)',
         path: '/intelligence/dashboard',
-        description: 'Key workforce figures and charts',
+        description: 'Preview only: belongs to Reports & Workforce Analytics',
         icon: <InsightsOutlinedIcon />,
-        roles: INSIGHT_ROLES
+        roles: INSIGHT_ROLES,
+        inSidebar: false
       },
       {
-        label: 'Experience analytics',
+        label: 'Experience analytics (Reports preview)',
         path: '/intelligence/analytics',
-        description: 'Project tenure and skill experience',
+        inSidebar: false,
+        description: 'Preview only: project tenure and skill experience, belongs to Reports & Workforce Analytics',
         icon: <TimelineOutlinedIcon />,
         roles: INSIGHT_ROLES
       },

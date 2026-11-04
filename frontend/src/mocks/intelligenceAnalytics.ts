@@ -47,6 +47,9 @@ import {
 
 export const DEFAULT_TENURE_THRESHOLD = 2;
 export const DEFAULT_SKILL_THRESHOLD = 3;
+// Demo placeholder for the minimum group size shown to aggregate-only roles. The real value is an open
+// stakeholder decision (requirements spec, permission rule P3).
+export const MIN_AGGREGATE_GROUP = 5;
 
 const threshold = (value: unknown, fallback: number): number =>
   value === null || value === undefined || Number.isNaN(Number(value))
@@ -183,6 +186,14 @@ export const tenureAnalytics = (
         b.maxTenureYears - a.maxTenureYears
     );
 
+  // Aggregate-only roles (Management) must not identify a person from a small project group.
+  const visibleProjects = rule.scope.canSeeIndividuals
+    ? projects
+    : projects.filter((row) => row.currentMembers >= MIN_AGGREGATE_GROUP);
+  if (visibleProjects.length < projects.length)
+    criteria.push(
+      `${projects.length - visibleProjects.length} projects with fewer than ${MIN_AGGREGATE_GROUP} people are not shown individually`
+    );
   return {
     thresholdYears: limit,
     asOf: toIsoDate(today),
@@ -195,7 +206,7 @@ export const tenureAnalytics = (
       'No current project'
     ),
     employees: rule.scope.canSeeIndividuals ? employees : [],
-    projects,
+    projects: visibleProjects,
     individualsVisible: rule.scope.canSeeIndividuals,
     criteria,
   };

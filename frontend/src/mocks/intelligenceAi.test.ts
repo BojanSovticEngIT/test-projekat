@@ -321,3 +321,59 @@ describe('saved searches', () => {
     expect(listSaved('tester')).toEqual([]);
   });
 });
+
+describe('workshop corrections', () => {
+  it('expands JVM from the fixed related-terms list and never filters on the word "backend"', () => {
+    const parsed = parseQuery('Backend developers experienced in JVM technologies', TODAY);
+    expect(parsed.filters.text).toBe('');
+    expect(parsed.notUnderstood).toEqual([]);
+    expect(parsed.filters.skills.map((item) => item.skillId).sort()).toEqual(['java', 'kotlin', 'spring']);
+    expect(parsed.filters.skillMatch).toBe('ANY');
+    expect(parsed.recognized.join(' ')).toMatch(/Related terms: JVM technologies/);
+    expect(parsed.notes.join(' ')).toMatch(/not semantic search/);
+    expect(parsed.structured).toMatchObject({ expandedFrom: { method: 'fixed_term_list' } });
+  });
+
+  it('keeps explicitly named skills ahead of related-term expansion', () => {
+    const parsed = parseQuery('Frontend developers familiar with modern Vue applications', TODAY);
+    expect(parsed.filters.skills).toEqual([{ skillId: 'vue', minLevel: 1, minYears: null, yearsMode: 'AT_LEAST' }]);
+    expect(parsed.notUnderstood).toEqual([]);
+    expect(parseQuery('Java developers with cloud experience', TODAY).filters.skills.map((item) => item.skillId)).toEqual(['java']);
+  });
+
+  it('hides the applicant total from roles without applicant access', () => {
+    const forRole = (role: UserRole) => {
+      const parsed = parseQuery('How many Java developers do we have?', TODAY);
+      return (answerQuery(scopeFor(role)!, { ...parsed.answerSpec, filters: parsed.filters }, TODAY) as StatAnswer).population.excluded.map((item) => item.label).join(' ');
+    };
+    expect(forRole(UserRole.HR)).not.toMatch(/applicants/i);
+    expect(forRole(UserRole.LINE_MANAGER)).not.toMatch(/applicants/i);
+    expect(forRole(UserRole.ADMIN)).toMatch(/applicants/i);
+  });
+
+  it('does not run must-have / optional matching for roles without matching access', () => {
+    const query = 'Find people with Java as a Must-have skill and Spring Boot as an Optional skill.';
+    const restricted = parseQuery(query, TODAY, { demandAccess: false });
+    expect(restricted.intent).not.toBe('DEMAND_MATCH');
+    expect(restricted.filters.skills.map((item) => item.skillId)).toEqual(['java']);
+    const allowed = parseQuery(query, TODAY);
+    expect(answerQuery(scopeFor(UserRole.HR)!, { ...allowed.answerSpec, filters: allowed.filters }, TODAY)).toBeNull();
+    expect(answerQuery(scopeFor(UserRole.HR_BUSINESS_PARTNER)!, { ...allowed.answerSpec, filters: allowed.filters }, TODAY)?.kind).toBe('MATCH');
+  });
+
+  it('does not reveal demand titles to roles without demand access', () => {
+    const query = 'Which employees have experience in technologies required for our new project?';
+    const restricted = parseQuery(query, TODAY, { demandAccess: false });
+    expect(restricted.demandId).toBeNull();
+    expect([...restricted.recognized, ...restricted.notes].join(' ')).not.toMatch(/DEM-|Vue Frontend Developer/);
+    expect(parseQuery(query, TODAY).demandId).not.toBeNull();
+  });
+
+  it('hides small per-project tenure groups from aggregate-only roles', () => {
+    const management = tenureAnalytics(scopeFor(UserRole.MANAGEMENT)!, { thresholdYears: 2 }, TODAY);
+    expect(management.employees).toEqual([]);
+    expect(management.projects.every((row) => row.currentMembers >= 5)).toBe(true);
+    expect(management.criteria.join(' ')).toMatch(/fewer than 5 people/);
+    expect(tenureAnalytics(admin, { thresholdYears: 2 }, TODAY).projects.some((row) => row.currentMembers < 5)).toBe(true);
+  });
+});

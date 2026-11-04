@@ -83,7 +83,10 @@ export const population = (
     excluded: [
       ...(includeContractors ? [] : [{ label: 'Contractors (B2B, supplier staff)', count: contractors }]),
       { label: 'New hires not yet active, inactive staff', count: notActive },
-      { label: 'External applicants (never part of workforce figures)', count: INTEL_APPLICANTS.length },
+      // Recruiting figures only for roles with applicant access (HR and line managers have none).
+      ...(rule.scope.applicantAccess === 'NONE'
+        ? []
+        : [{ label: 'External applicants (never part of workforce figures)', count: INTEL_APPLICANTS.length }]),
     ],
     filters: counted,
   };
@@ -170,6 +173,7 @@ export const answerQuery = (
   const asOf = toIsoDate(today);
 
   if (intent === 'DEMAND_MATCH') {
+    if (!rule.scope.canMatch) return null;
     const demand = sanitizeDemand(raw.demand, today);
     if (!demand || (!demand.mustHave.length && !demand.optional.length)) return null;
     const result = evaluateDemand(rule, demand, DEFAULT_WEIGHTS, today);
