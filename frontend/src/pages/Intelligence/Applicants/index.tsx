@@ -50,6 +50,10 @@ function ExternalApplicantsPage(): JSX.Element {
       <Alert severity="info" icon={<LockOutlinedIcon />} sx={{ mb: 2 }}>
         Privacy: only first and last name are shown. Contact information, CVs and other personal details are not available here and are never exported.
       </Alert>
+      <Alert severity="warning" variant="outlined" sx={{ mb: 2 }}>
+        Demo data: applicants are counted by their application date. The client system currently stores one full-name field and no application date, so in production an accurate monthly count needs an
+        application date (or an equivalent submission timestamp) from the source system, and first and last name as separate fields.
+      </Alert>
       <Grid container spacing={2}>
         <Grid item xs={12} md={3}>
           <Stack spacing={2}>

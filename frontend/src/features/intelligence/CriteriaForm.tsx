@@ -13,8 +13,8 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import type { AllocationStatus, IntelligenceCatalog, SearchFilters, Seniority } from '../../types/intelligence.types';
-import { SENIORITY_LABELS, STATUS_LABELS, levelLabel } from './intelligenceModel';
+import type { AllocationStatus, IntelligenceCatalog, SearchFilters, Seniority, WorkforceKind } from '../../types/intelligence.types';
+import { SENIORITY_LABELS, STATUS_LABELS, WORKFORCE_KIND_LABELS, levelLabel } from './intelligenceModel';
 
 interface Props {
   catalog: IntelligenceCatalog;
@@ -51,6 +51,7 @@ function CriteriaForm({ catalog, filters, onChange }: Props): JSX.Element {
   const teams = catalog.teams.filter((team) => !filters.businessUnitIds.length || filters.businessUnitIds.includes(team.businessUnitId));
   const statusOptions = (Object.keys(STATUS_LABELS) as AllocationStatus[]).map((id) => ({ id, name: STATUS_LABELS[id] }));
   const seniorityOptions = (Object.keys(SENIORITY_LABELS) as Seniority[]).map((id) => ({ id, name: SENIORITY_LABELS[id] }));
+  const workforceOptions = (Object.keys(WORKFORCE_KIND_LABELS) as WorkforceKind[]).map((id) => ({ id, name: WORKFORCE_KIND_LABELS[id] }));
 
   return (
     <Grid container spacing={2}>
@@ -94,12 +95,27 @@ function CriteriaForm({ catalog, filters, onChange }: Props): JSX.Element {
                     ))}
                   </TextField>
                   <TextField
+                    select
+                    size="small"
+                    label="Years"
+                    value={criterion.yearsMode ?? 'MORE_THAN'}
+                    sx={{ width: 120 }}
+                    onChange={(event) => {
+                      const skills = [...filters.skills];
+                      skills[index] = { ...criterion, yearsMode: event.target.value === 'AT_LEAST' ? 'AT_LEAST' : 'MORE_THAN' };
+                      set({ skills });
+                    }}
+                  >
+                    <MenuItem value="MORE_THAN">More than</MenuItem>
+                    <MenuItem value="AT_LEAST">At least</MenuItem>
+                  </TextField>
+                  <TextField
                     size="small"
                     type="number"
-                    label="More than (years)"
+                    label="Years"
                     inputProps={{ min: 0, max: 40, step: 0.5 }}
                     value={numberField(criterion.minYears)}
-                    sx={{ width: 150 }}
+                    sx={{ width: 100 }}
                     onChange={(event) => {
                       const skills = [...filters.skills];
                       skills[index] = { ...criterion, minYears: toNumber(event.target.value) };
@@ -166,7 +182,24 @@ function CriteriaForm({ catalog, filters, onChange }: Props): JSX.Element {
               onChange={(event) => set({ maxCurrentTenureYears: toNumber(event.target.value) })}
             />
           </Stack>
-          <MultiSelect label="Allocation status" options={statusOptions} value={filters.allocationStatuses} onChange={(ids) => set({ allocationStatuses: ids as AllocationStatus[] })} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <MultiSelect label="Allocation status" options={statusOptions} value={filters.allocationStatuses} onChange={(ids) => set({ allocationStatuses: ids as AllocationStatus[] })} />
+            <TextField
+              size="small"
+              type="number"
+              fullWidth
+              label="Current project ends within (days)"
+              inputProps={{ min: 1, max: 365 }}
+              value={numberField(filters.rollingOffWithinDays)}
+              onChange={(event) => set({ rollingOffWithinDays: toNumber(event.target.value) })}
+            />
+          </Stack>
+          <MultiSelect
+            label="Contract type"
+            options={workforceOptions}
+            value={filters.workforceTypes}
+            onChange={(ids) => set({ workforceTypes: ids as WorkforceKind[] })}
+          />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               select

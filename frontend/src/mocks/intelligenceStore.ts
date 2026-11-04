@@ -1,6 +1,8 @@
 // DEMO persistence for Workforce Intelligence. Stands in for backend tables (saved_search, search_history, search_usage).
 // Stored in this browser's localStorage, keyed by username. History keeps criteria only, never result data.
 import type {
+  AnswerSpec,
+  QueryIntent,
   ChartDatum,
   PricingConfig,
   SavedSearch,
@@ -11,6 +13,7 @@ import type {
 } from '../types/intelligence.types';
 import { addDays, monthKey, startOfToday, toIsoDate } from './intelligenceCore';
 import { sanitizeFilters, sanitizeSort } from './intelligenceSearch';
+import { sanitizeDemand } from './intelligenceMatching';
 
 const PREFIX = 'wfm-intelligence';
 const MAX_SAVED = 50;
@@ -59,6 +62,29 @@ export const listSaved = (user: string): SavedSearch[] =>
     b.updatedAt.localeCompare(a.updatedAt)
   );
 
+const INTENTS: QueryIntent[] = [
+  'WORKFORCE_COUNT',
+  'WORKFORCE_PERCENTAGE',
+  'TECHNOLOGY_COMPARISON',
+  'PROJECT_TENURE',
+  'SKILL_DURATION',
+  'AVAILABILITY',
+  'DEMAND_MATCH',
+];
+
+// The statistic to recompute when a saved AI search is run again (filters are stored separately).
+export const sanitizeAnswerSpec = (input: unknown): AnswerSpec | null => {
+  const raw = (input && typeof input === 'object' ? input : {}) as Partial<AnswerSpec>;
+  if (!INTENTS.includes(raw.intent as QueryIntent)) return null;
+  return {
+    intent: raw.intent as QueryIntent,
+    ...(Array.isArray(raw.compareSkillIds)
+      ? { compareSkillIds: raw.compareSkillIds.filter((id) => typeof id === 'string').slice(0, 4) }
+      : {}),
+    ...(raw.demand ? { demand: sanitizeDemand(raw.demand) } : {}),
+  };
+};
+
 const sanitizeInput = (
   input: Partial<SavedSearchInput>
 ): SavedSearchInput | string => {
@@ -72,6 +98,7 @@ const sanitizeInput = (
     filters: sanitizeFilters(input.filters),
     sort: sanitizeSort(input.sort),
     query: typeof input.query === 'string' ? input.query.slice(0, 500) : null,
+    answerSpec: sanitizeAnswerSpec(input.answerSpec),
   };
 };
 
@@ -165,6 +192,7 @@ export const addHistory = (
     entry.sort,
     entry.query,
   ]);
+  // History keeps criteria only, never result data.
   // Re-running the same search moves it to the top instead of adding a duplicate.
   const rest = list.filter(
     (item) =>

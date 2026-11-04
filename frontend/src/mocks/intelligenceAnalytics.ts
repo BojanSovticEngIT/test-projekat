@@ -83,6 +83,10 @@ const bucketize = (
     : buckets;
 };
 
+// Workforce statistics count active employees only; contractors (B2B, supplier) and applicants are excluded.
+const workforce = (rule: ScopeRule, today: Date): Profile[] =>
+  visibleProfiles(rule, today).filter((profile) => profile.workforceType === 'EMPLOYEE');
+
 const tenureYears = (profile: Profile): number | null =>
   profile.current ? profile.current.tenureDays / DAYS_PER_YEAR : null;
 
@@ -96,8 +100,9 @@ export const tenureAnalytics = (
   const limit = threshold(input.thresholdYears, DEFAULT_TENURE_THRESHOLD);
   const criteria = [
     `Threshold: more than ${limit} years on the current project`,
+    'Population: active employees (contractors excluded)',
   ];
-  let profiles = visibleProfiles(rule, today);
+  let profiles = workforce(rule, today);
   if (input.businessUnitId) {
     profiles = profiles.filter(
       (profile) => profile.businessUnitId === input.businessUnitId
@@ -204,8 +209,11 @@ export const skillAnalytics = (
   today = startOfToday()
 ): SkillExperienceResponse => {
   const limit = threshold(input.thresholdYears, DEFAULT_SKILL_THRESHOLD);
-  const criteria = [`Threshold: more than ${limit} years with the same skill`];
-  let profiles = visibleProfiles(rule, today);
+  const criteria = [
+    `Threshold: more than ${limit} years with the same skill`,
+    'Population: active employees (contractors excluded)',
+  ];
+  let profiles = workforce(rule, today);
   if (input.businessUnitId) {
     profiles = profiles.filter(
       (profile) => profile.businessUnitId === input.businessUnitId
@@ -405,12 +413,13 @@ export const dashboard = (
     input.skillThresholdYears,
     DEFAULT_SKILL_THRESHOLD
   );
-  const all = visibleProfiles(rule, today);
+  const all = workforce(rule, today);
   const profiles = input.businessUnitId
     ? all.filter((profile) => profile.businessUnitId === input.businessUnitId)
     : all;
   const criteria = [
     `Scope: ${rule.scope.label}`,
+    'Population: active employees (contractors and external applicants excluded)',
     input.businessUnitId
       ? `Business unit: ${unitName(input.businessUnitId)}`
       : 'All business units',

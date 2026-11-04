@@ -8,6 +8,7 @@ import type {
   ScopeInfo,
   Seniority,
   SkillEvidence,
+  WorkforceKind,
 } from '../types/intelligence.types';
 import {
   DEMO_HRBP_UNIT_ID,
@@ -292,6 +293,8 @@ export interface CurrentAssignment {
   // Start of the continuous assignment (days from today, negative)
   startDay: number;
   tenureDays: number;
+  // Planned end of the current allocation (days from today); null = open-ended
+  endDay: number | null;
 }
 
 export interface Profile {
@@ -304,6 +307,7 @@ export interface Profile {
   managerId: string | null;
   seniority: Seniority;
   costCode: string;
+  workforceType: WorkforceKind;
   languages: string[];
   capacityPct: number;
   skills: Map<string, OwnedSkill>;
@@ -314,25 +318,19 @@ export interface Profile {
   projectCount: number;
 }
 
-// Continuous assignment on one project that is active today, merging back-to-back allocations.
-const currentAssignment = (
-  allocations: MockAllocation[]
-): CurrentAssignment | null => {
-  const active = allocations.filter(
-    (item) => item.start <= 0 && (item.end === null || item.end >= 0)
-  );
-  if (!active.length) return null;
-  const main = [...active].sort(
-    (a, b) => b.pct - a.pct || a.start - b.start
-  )[0];
-  let startDay = main.start;
+// Start of the continuous assignment that contains `allocation`, merging back-to-back allocations on the same project.
+const continuousStart = (
+  allocations: MockAllocation[],
+  allocation: MockAllocation
+): number => {
+  let startDay = allocation.start;
   let extended = true;
   while (extended) {
     extended = false;
     allocations
       .filter(
         (item) =>
-          item.projectId === main.projectId &&
+          item.projectId === allocation.projectId &&
           item.start < startDay &&
           item.end !== null
       )
@@ -343,24 +341,43 @@ const currentAssignment = (
         }
       });
   }
+  return startDay;
+};
+
+// The current project is the active assignment with the longest continuous tenure, so someone who has spent
+// three years on project A at 40% is still found by "same project for more than 2 years" after joining B at 60%.
+const currentAssignment = (
+  allocations: MockAllocation[]
+): CurrentAssignment | null => {
+  const active = allocations.filter(
+    (item) => item.start <= 0 && (item.end === null || item.end >= 0)
+  );
+  if (!active.length) return null;
+  const ranked = active
+    .map((item) => ({ item, startDay: continuousStart(allocations, item) }))
+    .sort(
+      (a, b) =>
+        a.startDay - b.startDay ||
+        b.item.pct - a.item.pct ||
+        a.item.projectId.localeCompare(b.item.projectId)
+    );
+  const { item, startDay } = ranked[0];
   return {
-    projectId: main.projectId,
-    role: main.role,
-    pct: main.pct,
+    projectId: item.projectId,
+    role: item.role,
+    pct: item.pct,
     startDay,
     tenureDays: -startDay,
+    endDay: item.end,
   };
 };
 
-// Days spent on any project up to today, counting overlapping allocations once.
-const projectDays = (allocations: MockAllocation[]): number => {
-  const ranges = allocations
-    .filter((item) => item.start <= 0)
-    .map((item) => [item.start, Math.min(item.end ?? 0, 0)] as const)
-    .sort((a, b) => a[0] - b[0]);
+// Days covered by a set of ranges up to today, counting overlaps once.
+const mergedDays = (ranges: (readonly [number, number])[]): number => {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
   let total = 0;
   let open: [number, number] | null = null;
-  for (const [start, end] of ranges) {
+  for (const [start, end] of sorted) {
     if (open && start <= open[1] + 1) {
       open = [open[0], Math.max(open[1], end)];
     } else {
@@ -371,6 +388,13 @@ const projectDays = (allocations: MockAllocation[]): number => {
   if (open) total += open[1] - open[0] + 1;
   return total;
 };
+
+const pastRange = (item: MockAllocation): readonly [number, number] =>
+  [item.start, Math.min(item.end ?? 0, 0)] as const;
+
+// Days spent on any project up to today, counting overlapping allocations once.
+const projectDays = (allocations: MockAllocation[]): number =>
+  mergedDays(allocations.filter((item) => item.start <= 0).map(pastRange));
 
 let profileCache: { day: string; profiles: Profile[] } | null = null;
 
@@ -407,7 +431,8 @@ export const allProfiles = (today = startOfToday()): Profile[] => {
           years = toYears(skill.sinceDaysAgo);
           quality = 'RECORDED';
         } else if (usedOn.length) {
-          years = toYears(-Math.min(...usedOn.map((item) => item.start)));
+          // Time actually spent on projects that used the skill; gaps between projects do not count.
+          years = toYears(mergedDays(usedOn.map(pastRange)));
           quality = 'ESTIMATED';
         }
         skills.set(skill.skillId, {
@@ -433,6 +458,7 @@ export const allProfiles = (today = startOfToday()): Profile[] => {
       managerId: person.managerId,
       seniority: person.seniority,
       costCode: person.costCode,
+      workforceType: person.workforceType,
       languages: person.languages,
       capacityPct: Math.round(person.contractFte * 100),
       skills,
@@ -451,22 +477,23 @@ export const allProfiles = (today = startOfToday()): Profile[] => {
   return profiles;
 };
 
+// Row scope of a role: line managers see direct reports, HR BPs their unit, the rest everyone.
+export const inScope = (
+  rule: ScopeRule,
+  person: { managerId: string | null; unitId: string }
+): boolean => {
+  if (rule.kind === 'TEAM') return person.managerId === DEMO_LINE_MANAGER_ID;
+  if (rule.kind === 'UNIT')
+    return unitSubtree(DEMO_HRBP_UNIT_ID).has(person.unitId);
+  return true;
+};
+
 // Authorization is applied here, before any filtering, ranking or aggregation.
 export const visibleProfiles = (
   rule: ScopeRule,
   today = startOfToday()
-): Profile[] => {
-  const profiles = allProfiles(today);
-  if (rule.kind === 'TEAM')
-    return profiles.filter(
-      (profile) => profile.managerId === DEMO_LINE_MANAGER_ID
-    );
-  if (rule.kind === 'UNIT') {
-    const units = unitSubtree(DEMO_HRBP_UNIT_ID);
-    return profiles.filter((profile) => units.has(profile.unitId));
-  }
-  return profiles;
-};
+): Profile[] =>
+  allProfiles(today).filter((profile) => inScope(rule, profile));
 
 export const employeeName = (id: string | null): string | null =>
   INTEL_EMPLOYEES.find((person) => person.id === id)?.name ?? null;

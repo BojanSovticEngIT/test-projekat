@@ -168,6 +168,27 @@ describe('Sidebar', () => {
     });
   });
 
+  it('shows Search & Discovery as a primary item that opens the search page', async () => {
+    renderSidebarForRole(UserRole.PMO, '/dashboard', true);
+    const link = screen.getByRole('link', { name: 'Search & Discovery' });
+    expect(link).toHaveAttribute('href', '/search');
+    // A direct link, not a group: no expand toggle and no duplicate entry under Workforce Intelligence.
+    expect(screen.queryByRole('button', { name: /Expand Search & Discovery/ })).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Expand Workforce Intelligence' });
+    await userEvent.setup().click(toggle);
+    expect(submenuLinks('Workforce Intelligence')).not.toContain('Search & Discovery');
+    expect(screen.getAllByRole('link').filter((item) => item.getAttribute('href') === '/search')).toHaveLength(1);
+
+    await userEvent.setup().click(link);
+    expect(screen.getByTestId('location')).toHaveTextContent('/search');
+    expect(screen.getByRole('link', { name: 'Search & Discovery' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('hides Search & Discovery from roles without search access', () => {
+    renderSidebarForRole(UserRole.EMPLOYEE);
+    expect(screen.queryByRole('link', { name: 'Search & Discovery' })).not.toBeInTheDocument();
+  });
+
   it('navigates to employees from the Employees tab', async () => {
     renderSidebarForRole(UserRole.ADMIN, '/dashboard', true);
     await expandAll();

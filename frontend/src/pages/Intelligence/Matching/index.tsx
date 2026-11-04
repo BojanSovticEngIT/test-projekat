@@ -2,11 +2,24 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tooltip,
   Autocomplete,
   Box,
   Button,
@@ -25,7 +38,7 @@ import {
   Typography
 } from '@mui/material';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { WorkforcePageHeader } from '../../../components/WorkforcePageHeader';
 import ExportMenu from '../../../components/ExportMenu/ExportMenu';
 import { useDemands, useIntelligenceCatalog, useMatching } from '@features/intelligence/intelligenceApi';
@@ -48,6 +61,92 @@ const TYPE_LABELS: Record<CriterionType, string> = {
   PROJECT_EXPERIENCE: 'Similar project',
   LANGUAGE: 'Language'
 };
+
+const STATUS_TEXT: Record<StaffingDemand['status'], { label: string; color: 'success' | 'info' | 'default' }> = {
+  OPEN: { label: 'Open', color: 'success' },
+  IN_SELECTION: { label: 'In selection', color: 'info' },
+  ON_HOLD: { label: 'On hold', color: 'default' }
+};
+type SortKey = 'SCORE' | 'AVAILABILITY' | 'NAME';
+
+// Side-by-side view of 2–4 candidates, criterion by criterion.
+function CompareDialog({ candidates, open, onClose }: { candidates: CandidateMatch[]; open: boolean; onClose: () => void }): JSX.Element {
+  const criteria = candidates[0]
+    ? [...candidates[0].mustHave.map((item) => ({ ...item, kind: 'Must-have' })), ...candidates[0].optional.map((item) => ({ ...item, kind: 'Optional' }))]
+    : [];
+  const cell = (candidate: CandidateMatch, criterionId: string) => [...candidate.mustHave, ...candidate.optional].find((item) => item.criterionId === criterionId);
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth aria-labelledby="compare-title">
+      <DialogTitle id="compare-title">Compare candidates</DialogTitle>
+      <DialogContent>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Criterion</TableCell>
+                {candidates.map((candidate) => (
+                  <TableCell key={candidate.employeeId}>
+                    <Typography fontWeight={700}>{candidate.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {candidate.title}
+                    </Typography>
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              <TableRow>
+                <TableCell>
+                  <strong>Fit score</strong>
+                </TableCell>
+                {candidates.map((candidate) => (
+                  <TableCell key={candidate.employeeId}>{candidate.eligible ? <strong>{candidate.score}/100</strong> : <Chip size="small" color="error" label="Not eligible" />}</TableCell>
+                ))}
+              </TableRow>
+              {(['optional', 'competency', 'experience', 'availability'] as (keyof MatchingWeights)[]).map((key) => (
+                <TableRow key={key}>
+                  <TableCell>{WEIGHT_LABELS[key]}</TableCell>
+                  {candidates.map((candidate) => (
+                    <TableCell key={candidate.employeeId}>{candidate.components[key] ?? '—'}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+              {criteria.map((criterion) => (
+                <TableRow key={criterion.criterionId}>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {criterion.kind}: {criterion.label}
+                    </Typography>
+                  </TableCell>
+                  {candidates.map((candidate) => {
+                    const result = cell(candidate, criterion.criterionId);
+                    return (
+                      <TableCell key={candidate.employeeId}>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {result?.met ? <CheckCircleOutlineIcon color="success" fontSize="small" /> : <HighlightOffIcon color="error" fontSize="small" />}
+                          <Typography variant="caption">{result?.detail}</Typography>
+                        </Stack>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableCell>Availability on start</TableCell>
+                {candidates.map((candidate) => (
+                  <TableCell key={candidate.employeeId}>{candidate.availabilityLabel}</TableCell>
+                ))}
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 const label = (criterion: DemandCriterion, catalog: IntelligenceCatalog): string => {
   switch (criterion.type) {
@@ -152,18 +251,47 @@ function CriterionBuilder({ catalog, onAdd }: { catalog: IntelligenceCatalog; on
   );
 }
 
-function CandidateCard({ candidate, weights }: { candidate: CandidateMatch; weights: MatchingWeights }): JSX.Element {
+function CandidateCard({
+  candidate,
+  weights,
+  selected,
+  onToggle,
+  selectDisabled
+}: {
+  candidate: CandidateMatch;
+  weights: MatchingWeights;
+  selected: boolean;
+  onToggle: () => void;
+  selectDisabled: boolean;
+}): JSX.Element {
   return (
     <Accordion variant="outlined" disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ width: '100%' }}>
+          <Tooltip title={selectDisabled && !selected ? 'Compare up to 4 people' : 'Select to compare'}>
+            <span>
+              <Checkbox
+                size="small"
+                checked={selected}
+                disabled={selectDisabled && !selected}
+                inputProps={{ 'aria-label': `Compare ${candidate.name}` }}
+                onClick={(event) => event.stopPropagation()}
+                onChange={onToggle}
+              />
+            </span>
+          </Tooltip>
           <Box sx={{ position: 'relative', display: 'inline-flex', minWidth: 56 }}>
             {candidate.eligible ? (
               <>
-                <CircularProgress variant="determinate" value={candidate.score ?? 0} size={52} color={(candidate.score ?? 0) >= 75 ? 'success' : 'warning'} />
+                <CircularProgress
+                  variant="determinate"
+                  value={candidate.score ?? 0}
+                  size={52}
+                  color={(candidate.score ?? 0) >= 75 ? 'success' : (candidate.score ?? 0) >= 50 ? 'warning' : 'error'}
+                />
                 <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography fontWeight={700} aria-label={`Match ${candidate.score} percent`}>
-                    {candidate.score}%
+                  <Typography fontWeight={700} aria-label={`Fit score ${candidate.score} of 100`}>
+                    {candidate.score}
                   </Typography>
                 </Box>
               </>
@@ -214,7 +342,7 @@ function CandidateCard({ candidate, weights }: { candidate: CandidateMatch; weig
                 </Box>
               )
             )}
-            {!candidate.eligible ? <Alert severity="error">Fails a must-have criterion, so no match percentage is given.</Alert> : null}
+            {!candidate.eligible ? <Alert severity="error">Fails a must-have criterion, so no fit score is given.</Alert> : null}
           </Grid>
           <Grid item xs={12} md={7}>
             <Typography variant="subtitle2" gutterBottom>
@@ -250,16 +378,41 @@ function CandidateCard({ candidate, weights }: { candidate: CandidateMatch; weig
 function DemandMatchingPage(): JSX.Element {
   const user = useAuthStore((state) => state.user);
   const [params] = useSearchParams();
+  const location = useLocation();
+  // Criteria handed over from AI Quick Search ("Java as must-have, Spring Boot as optional").
+  const handedOver = (location.state as { demand?: StaffingDemand } | null)?.demand ?? null;
   const catalog = useIntelligenceCatalog().data;
   const demands = useDemands();
-  const [demand, setDemand] = useState<StaffingDemand | null>(null);
+  const [demand, setDemand] = useState<StaffingDemand | null>(handedOver);
   const [weights, setWeights] = useState<MatchingWeights>(DEFAULT_WEIGHTS);
+  const [sortKey, setSortKey] = useState<SortKey>('SCORE');
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
   const matching = useMatching(demand, weights);
   const result = matching.data;
 
   useEffect(() => {
     if (!demand && demands.data?.length) setDemand(demands.data.find((item) => item.id === params.get('demand')) ?? demands.data[0]);
   }, [demands.data, demand, params]);
+  useEffect(() => setCompareIds([]), [demand?.id]);
+
+  const sortCandidates = (list: CandidateMatch[]): CandidateMatch[] =>
+    sortKey === 'SCORE'
+      ? list
+      : [...list].sort((a, b) => (sortKey === 'NAME' ? a.name.localeCompare(b.name) : b.availablePctOnStart - a.availablePctOnStart || a.name.localeCompare(b.name)));
+  const allCandidates = result ? [...result.eligible, ...result.notEligible] : [];
+  const toggleCompare = (id: string): void =>
+    setCompareIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : current.length >= 4 ? current : [...current, id]));
+  const card = (candidate: CandidateMatch): JSX.Element => (
+    <CandidateCard
+      key={candidate.employeeId}
+      candidate={candidate}
+      weights={result?.appliedWeights ?? weights}
+      selected={compareIds.includes(candidate.employeeId)}
+      selectDisabled={compareIds.length >= 4}
+      onToggle={() => toggleCompare(candidate.employeeId)}
+    />
+  );
 
   if (demands.isError) return <Alert severity="error">Demand matching is not available for your role.</Alert>;
 
@@ -273,17 +426,17 @@ function DemandMatchingPage(): JSX.Element {
       generatedAt: new Date(),
       generatedBy: user?.username,
       criteria: result.criteria,
-      notes: ['Must-have criteria are eligibility gates. Not eligible people have no match percentage.', 'Internal employees only; external applicants are not matched.'],
+      notes: ['Must-have criteria are eligibility gates. Not eligible people have no fit score.', 'Demo data: illustrative only.', 'Internal employees only; external applicants are not matched.'],
       kpis: [
         { label: 'Evaluated', value: String(result.evaluated) },
         { label: 'Eligible', value: String(result.eligibleCount) },
-        { label: 'Best score', value: result.eligible[0]?.score !== undefined ? `${result.eligible[0].score}%` : '—' }
+        { label: 'Best fit score', value: result.eligible[0]?.score !== undefined ? `${result.eligible[0].score}/100` : '—' }
       ],
       charts: result.eligible.length ? [{ title: 'Match score of eligible candidates', data: result.eligible.slice(0, 15).map((item) => ({ label: item.name, value: item.score ?? 0 })) }] : [],
       tables: [
         {
           title: 'Eligible candidates',
-          columns: ['Rank', 'Name', 'Title', 'Business unit', 'Match %', 'Optional', 'Competency', 'Experience', 'Availability', 'Optional met', 'Availability on start'],
+          columns: ['Rank', 'Name', 'Title', 'Business unit', 'Fit score', 'Optional', 'Competency', 'Experience', 'Availability', 'Optional met', 'Availability on start'],
           rows: result.eligible.map((item, index) => [
             index + 1,
             item.name,
@@ -323,7 +476,13 @@ function DemandMatchingPage(): JSX.Element {
                 label="Staffing demand"
                 value={demands.data?.some((item) => item.id === demand.id) ? demand.id : ''}
                 onChange={(event) => setDemand(demands.data?.find((item) => item.id === event.target.value) ?? demand)}
-                helperText={demand.id.startsWith('custom') ? 'Edited: criteria differ from the stored demand (not saved).' : demand.description}
+                helperText={
+                  demand.id === 'custom-ai'
+                    ? 'Criteria from AI Quick Search (not a stored demand).'
+                    : demand.id.startsWith('custom')
+                      ? 'Edited: criteria differ from the stored demand (not saved in the demo).'
+                      : demand.description
+                }
               >
                 {demands.data?.map((item) => (
                   <MenuItem key={item.id} value={item.id}>
@@ -331,6 +490,12 @@ function DemandMatchingPage(): JSX.Element {
                   </MenuItem>
                 ))}
               </TextField>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+                <Chip size="small" color={STATUS_TEXT[demand.status]?.color ?? 'default'} label={STATUS_TEXT[demand.status]?.label ?? demand.status} />
+                {demand.role ? <Chip size="small" variant="outlined" label={`Role: ${demand.role}`} /> : null}
+                {demand.client ? <Chip size="small" variant="outlined" label={demand.client} /> : null}
+                <Chip size="small" variant="outlined" label={`Created ${demand.createdDate}`} />
+              </Stack>
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
                 <TextField size="small" type="date" label="Start" InputLabelProps={{ shrink: true }} value={demand.startDate} onChange={(event) => event.target.value && update({ startDate: event.target.value })} />
                 <TextField size="small" type="number" label="Allocation %" value={demand.allocationPct} inputProps={{ min: 1, max: 100 }} onChange={(event) => update({ allocationPct: Number(event.target.value) || 100 })} />
@@ -427,13 +592,26 @@ function DemandMatchingPage(): JSX.Element {
             {matching.isError ? <Alert severity="warning">Add at least one criterion.</Alert> : null}
             {result ? (
               <>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                  {result.eligibleCount} eligible of {result.evaluated} evaluated · {result.scope.label}
+                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {result.eligibleCount} eligible of {result.evaluated} evaluated · {result.scope.label}
+                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TextField select size="small" label="Sort by" value={sortKey} sx={{ minWidth: 170 }} onChange={(event) => setSortKey(event.target.value as SortKey)}>
+                      <MenuItem value="SCORE">Fit score</MenuItem>
+                      <MenuItem value="AVAILABILITY">Availability on start</MenuItem>
+                      <MenuItem value="NAME">Name</MenuItem>
+                    </TextField>
+                    <Button variant="contained" startIcon={<CompareArrowsIcon />} disabled={compareIds.length < 2} onClick={() => setCompareOpen(true)}>
+                      Compare ({compareIds.length})
+                    </Button>
+                  </Stack>
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Fit score 0–100 = weighted mix of optional criteria met, competency level, relevant project experience and availability. Tick 2–4 people to compare them.
                 </Typography>
                 <Stack spacing={1}>
-                  {result.eligible.map((candidate) => (
-                    <CandidateCard key={candidate.employeeId} candidate={candidate} weights={result.appliedWeights} />
-                  ))}
+                  {sortCandidates(result.eligible).map(card)}
                   {!result.eligible.length ? <Alert severity="info">Nobody meets every must-have criterion. See the near misses below, or relax a must-have.</Alert> : null}
                 </Stack>
                 {result.notEligible.length ? (
@@ -441,11 +619,10 @@ function DemandMatchingPage(): JSX.Element {
                     <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 3, mb: 1 }}>
                       Not eligible — near misses ({result.notEligible.length})
                     </Typography>
-                    <Stack spacing={1}>
-                      {result.notEligible.map((candidate) => (
-                        <CandidateCard key={candidate.employeeId} candidate={candidate} weights={result.appliedWeights} />
-                      ))}
-                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      They meet some must-haves, or have a required skill below the required level or years. They get no score.
+                    </Typography>
+                    <Stack spacing={1}>{sortCandidates(result.notEligible).map(card)}</Stack>
                   </>
                 ) : null}
               </>
@@ -455,6 +632,11 @@ function DemandMatchingPage(): JSX.Element {
       ) : (
         <LinearProgress />
       )}
+      <CompareDialog
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        candidates={compareIds.map((id) => allCandidates.find((item) => item.employeeId === id)).filter((item): item is CandidateMatch => Boolean(item))}
+      />
     </Box>
   );
 }

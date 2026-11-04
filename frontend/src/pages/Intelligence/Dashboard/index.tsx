@@ -85,16 +85,16 @@ function IntelligenceDashboardPage(): JSX.Element {
       {data ? (
         <Grid container spacing={2}>
           <Grid item xs={6} md={2}>
-            <KpiCard label="Internal employees" value={data.kpis.internalEmployees} caption="Active staff in scope" onClick={canDrill ? () => search(`text=${buQuery}`) : undefined} />
+            <KpiCard label="Internal employees" value={data.kpis.internalEmployees} caption="Active employees in scope (contractors excluded)" onClick={canDrill ? () => search(`workforce=EMPLOYEE${buQuery}`) : undefined} />
           </Grid>
           <Grid item xs={6} md={2}>
-            <KpiCard label="On bench" value={data.kpis.onBench} caption={`${data.kpis.partiallyAllocated} partially allocated`} onClick={canDrill ? () => search(`status=BENCH${buQuery}`) : undefined} />
+            <KpiCard label="On bench" value={data.kpis.onBench} caption={`${data.kpis.internalEmployees ? Math.round((1000 * data.kpis.onBench) / data.kpis.internalEmployees) / 10 : 0}% of employees · ${data.kpis.partiallyAllocated} partially allocated`} onClick={canDrill ? () => search(`status=BENCH&workforce=EMPLOYEE${buQuery}`) : undefined} />
           </Grid>
           <Grid item xs={6} md={2}>
-            <KpiCard label={`Same project > ${data.tenureThresholdYears} y`} value={data.kpis.sameProjectOverThreshold} caption="Current project tenure" onClick={canDrill ? () => search(`tenureMin=${data.tenureThresholdYears}&sort=TENURE${buQuery}`) : undefined} />
+            <KpiCard label={`Same project > ${data.tenureThresholdYears} y`} value={data.kpis.sameProjectOverThreshold} caption={`${data.kpis.internalEmployees ? Math.round((1000 * data.kpis.sameProjectOverThreshold) / data.kpis.internalEmployees) / 10 : 0}% of employees · continuous tenure`} onClick={canDrill ? () => search(`tenureMin=${data.tenureThresholdYears}&sort=TENURE&workforce=EMPLOYEE${buQuery}`) : undefined} />
           </Grid>
           <Grid item xs={6} md={2}>
-            <KpiCard label={`Same skill > ${data.skillThresholdYears} y`} value={data.kpis.skillOverThreshold} caption="Employees, counted once" onClick={canDrill ? () => search(`skillYearsMin=${data.skillThresholdYears}&sort=EXPERIENCE${buQuery}`) : undefined} />
+            <KpiCard label={`Same skill > ${data.skillThresholdYears} y`} value={data.kpis.skillOverThreshold} caption={`${data.kpis.internalEmployees ? Math.round((1000 * data.kpis.skillOverThreshold) / data.kpis.internalEmployees) / 10 : 0}% of employees, each counted once`} onClick={canDrill ? () => search(`skillYearsMin=${data.skillThresholdYears}&sort=EXPERIENCE&workforce=EMPLOYEE${buQuery}`) : undefined} />
           </Grid>
           {data.kpis.applicantsThisMonth !== null ? (
             <Grid item xs={6} md={2}>

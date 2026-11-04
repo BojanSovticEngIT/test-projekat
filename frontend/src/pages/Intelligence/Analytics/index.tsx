@@ -83,7 +83,7 @@ function TenureTab({ catalog }: { catalog: IntelligenceCatalog }): JSX.Element {
         <ExportMenu getReport={report} disabled={!data} />
       </Stack>
       <Alert severity="info">
-        Tenure = days since the start of the continuous assignment to the current main project (largest allocation %; back-to-back allocations on the same project are joined). Total project experience is shown separately and counts overlapping assignments once.
+        Tenure = days since the start of the continuous assignment on a current project (the longest-running active assignment counts, so people on several projects are included; back-to-back allocations on the same project are joined). Figures count active employees; contractors are excluded. Total project experience is shown separately and counts overlapping assignments once.
       </Alert>
       {data ? (
         <Grid container spacing={2}>
@@ -91,8 +91,8 @@ function TenureTab({ catalog }: { catalog: IntelligenceCatalog }): JSX.Element {
             <KpiCard
               label={`Employees > ${data.thresholdYears} years on current project`}
               value={data.aboveThreshold}
-              caption={`Out of ${data.withCurrentProject} with a current project (${data.employeesInScope} in scope)`}
-              onClick={catalog.scope.canSearchPeople ? () => navigate(`/search?tenureMin=${data.thresholdYears}&sort=TENURE${businessUnitId ? `&bu=${businessUnitId}` : ''}`) : undefined}
+              caption={`${data.employeesInScope ? Math.round((1000 * data.aboveThreshold) / data.employeesInScope) / 10 : 0}% of ${data.employeesInScope} employees · ${data.withCurrentProject} have a current project`}
+              onClick={catalog.scope.canSearchPeople ? () => navigate(`/search?workforce=EMPLOYEE&tenureMin=${data.thresholdYears}&sort=TENURE${businessUnitId ? `&bu=${businessUnitId}` : ''}`) : undefined}
             />
           </Grid>
           <Grid item xs={12} sm={8}>
@@ -231,8 +231,8 @@ function SkillTab({ catalog }: { catalog: IntelligenceCatalog }): JSX.Element {
               <KpiCard
                 label={`Employees with a skill > ${data.thresholdYears} years`}
                 value={data.employeesAboveThreshold}
-                caption={`Each person counted once (${data.assignmentsAboveThreshold} skill assignments)`}
-                onClick={catalog.scope.canSearchPeople ? () => navigate(`/search?skillYearsMin=${data.thresholdYears}&sort=EXPERIENCE${skillId ? `&skill=${skillId}` : ''}${businessUnitId ? `&bu=${businessUnitId}` : ''}`) : undefined}
+                caption={`${data.employeesInScope ? Math.round((1000 * data.employeesAboveThreshold) / data.employeesInScope) / 10 : 0}% of ${data.employeesInScope} employees, each counted once (${data.assignmentsAboveThreshold} skill assignments)`}
+                onClick={catalog.scope.canSearchPeople ? () => navigate(`/search?workforce=EMPLOYEE&skillYearsMin=${data.thresholdYears}&sort=EXPERIENCE${skillId ? `&skill=${skillId}` : ''}${businessUnitId ? `&bu=${businessUnitId}` : ''}`) : undefined}
               />
               <KpiCard label="Data quality" value={`${data.estimatedAssignments} est. · ${data.unavailableAssignments} n/a`} caption="Estimated / unavailable experience dates" />
             </Stack>

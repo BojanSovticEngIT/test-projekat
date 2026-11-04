@@ -1,5 +1,6 @@
 // DEMO DATA for Workforce Intelligence (Module 4). All dates are offsets from today so analytics stay stable and current.
-import type { Seniority, StaffingDemand } from '../types/intelligence.types';
+import type { DemandCriterion, Seniority, StaffingDemand } from '../types/intelligence.types';
+import { generateStaff } from './intelligenceGeneratedStaff';
 
 export interface MockSkill {
   id: string;
@@ -9,98 +10,43 @@ export interface MockSkill {
 }
 
 export const INTEL_SKILLS: MockSkill[] = [
-  {
-    id: 'java',
-    name: 'Java',
-    category: 'Backend',
-    aliases: ['java 17', 'java 21', 'jdk'],
-  },
-  {
-    id: 'spring',
-    name: 'Spring Boot',
-    category: 'Backend',
-    aliases: ['spring', 'springboot', 'spring-boot'],
-  },
-  {
-    id: 'kafka',
-    name: 'Apache Kafka',
-    category: 'Backend',
-    aliases: ['kafka'],
-  },
-  {
-    id: 'dotnet',
-    name: '.NET',
-    category: 'Backend',
-    aliases: ['dotnet', 'c#', 'csharp'],
-  },
-  {
-    id: 'node',
-    name: 'Node.js',
-    category: 'Backend',
-    aliases: ['node', 'nodejs'],
-  },
-  {
-    id: 'react',
-    name: 'React',
-    category: 'Frontend',
-    aliases: ['reactjs', 'react.js'],
-  },
-  { id: 'ts', name: 'TypeScript', category: 'Frontend', aliases: ['ts'] },
-  {
-    id: 'angular',
-    name: 'Angular',
-    category: 'Frontend',
-    aliases: ['angularjs'],
-  },
-  { id: 'python', name: 'Python', category: 'Data', aliases: ['python3'] },
-  {
-    id: 'spark',
-    name: 'Apache Spark',
-    category: 'Data',
-    aliases: ['spark', 'pyspark'],
-  },
-  { id: 'sql', name: 'SQL', category: 'Data', aliases: [] },
-  { id: 'pg', name: 'PostgreSQL', category: 'Data', aliases: ['postgres'] },
-  { id: 'powerbi', name: 'Power BI', category: 'Data', aliases: ['powerbi'] },
-  {
-    id: 'k8s',
-    name: 'Kubernetes',
-    category: 'Cloud & DevOps',
-    aliases: ['k8s'],
-  },
-  { id: 'docker', name: 'Docker', category: 'Cloud & DevOps', aliases: [] },
-  {
-    id: 'terraform',
-    name: 'Terraform',
-    category: 'Cloud & DevOps',
-    aliases: [],
-  },
-  {
-    id: 'aws',
-    name: 'AWS',
-    category: 'Cloud & DevOps',
-    aliases: ['amazon web services'],
-  },
-  {
-    id: 'azure',
-    name: 'Azure',
-    category: 'Cloud & DevOps',
-    aliases: ['microsoft azure'],
-  },
-  { id: 'selenium', name: 'Selenium', category: 'QA', aliases: [] },
-  { id: 'playwright', name: 'Playwright', category: 'QA', aliases: [] },
-  {
-    id: 'sap',
-    name: 'SAP',
-    category: 'Enterprise',
-    aliases: ['abap', 's/4hana', 's4hana'],
-  },
-  {
-    id: 'ba',
-    name: 'Business Analysis',
-    category: 'Analysis',
-    aliases: ['requirements analysis'],
-  },
+  // Backend
+  { id: 'java', name: 'Java', category: 'Backend', aliases: ['java 17', 'java 21', 'jdk', 'jave'] },
+  { id: 'spring', name: 'Spring Boot', category: 'Backend', aliases: ['spring', 'springboot', 'spring-boot'] },
+  { id: 'dotnet', name: '.NET / C#', category: 'Backend', aliases: ['.net', 'dotnet', 'c#', 'csharp', 'asp.net', 'net core', '.net core'] },
+  { id: 'node', name: 'Node.js', category: 'Backend', aliases: ['node', 'nodejs', 'node js'] },
+  { id: 'fastapi', name: 'FastAPI', category: 'Backend', aliases: ['fast api'] },
+  { id: 'kafka', name: 'Apache Kafka', category: 'Integration & Messaging', aliases: ['kafka'] },
+  // Frontend
+  { id: 'js', name: 'JavaScript', category: 'Frontend', aliases: ['javascript', 'js', 'ecmascript'] },
+  { id: 'ts', name: 'TypeScript', category: 'Frontend', aliases: ['ts', 'typescript'] },
+  { id: 'react', name: 'React', category: 'Frontend', aliases: ['reactjs', 'react.js', 'react js'] },
+  { id: 'angular', name: 'Angular', category: 'Frontend', aliases: ['angularjs'] },
+  { id: 'vue', name: 'Vue.js', category: 'Frontend', aliases: ['vue', 'vuejs', 'vue js', 'vue 3'] },
+  { id: 'vuetify', name: 'Vuetify', category: 'Frontend', aliases: [] },
+  // Mobile
+  { id: 'kotlin', name: 'Kotlin / Android', category: 'Mobile', aliases: ['kotlin', 'android'] },
+  { id: 'flutter', name: 'Flutter', category: 'Mobile', aliases: ['dart'] },
+  // Data
+  { id: 'python', name: 'Python', category: 'Data Engineering', aliases: ['python3', 'py'] },
+  { id: 'spark', name: 'Apache Spark', category: 'Data Engineering', aliases: ['spark', 'pyspark'] },
+  { id: 'sql', name: 'SQL', category: 'Databases', aliases: ['t-sql', 'tsql', 'pl/sql'] },
+  { id: 'pg', name: 'PostgreSQL', category: 'Databases', aliases: ['postgres', 'postgresql', 'postgre'] },
+  { id: 'powerbi', name: 'Power BI', category: 'BI & Analytics', aliases: ['powerbi', 'power-bi'] },
+  // Cloud & DevOps
+  { id: 'aws', name: 'AWS', category: 'Cloud', aliases: ['amazon web services'] },
+  { id: 'azure', name: 'Azure', category: 'Cloud', aliases: ['microsoft azure'] },
+  { id: 'gcp', name: 'Google Cloud', category: 'Cloud', aliases: ['gcp', 'google cloud platform'] },
+  { id: 'docker', name: 'Docker', category: 'DevOps & Containers', aliases: ['containers'] },
+  { id: 'k8s', name: 'Kubernetes', category: 'DevOps & Containers', aliases: ['k8s', 'kubernetes', 'aks', 'eks'] },
+  { id: 'terraform', name: 'Terraform', category: 'DevOps & Containers', aliases: ['iac', 'infrastructure as code'] },
+  // Quality
+  { id: 'selenium', name: 'Selenium', category: 'QA & Testing', aliases: [] },
+  { id: 'playwright', name: 'Playwright', category: 'QA & Testing', aliases: [] },
+  { id: 'jest', name: 'Jest / unit testing', category: 'QA & Testing', aliases: ['jest', 'unit testing', 'unit tests', 'testing', 'vitest', 'tdd'] },
+  // Business
+  { id: 'sap', name: 'SAP', category: 'Enterprise Applications', aliases: ['abap', 's/4hana', 's4hana'] },
+  { id: 'ba', name: 'Business Analysis', category: 'Business Analysis', aliases: ['requirements analysis', 'business analyst'] },
 ];
 
 export interface MockUnit {
@@ -146,6 +92,8 @@ export const INTEL_UNITS: MockUnit[] = [
     aliases: ['cloud and infrastructure'],
   },
   { id: 'h-devops', name: 'DevOps', parentId: 'h-cloud', aliases: [] },
+  { id: 'h-dotnet', name: '.NET CoE', parentId: 'h-sf', aliases: ['dotnet competence center'] },
+  { id: 'h-mob', name: 'Mobile & Web', parentId: 'h-sf', aliases: ['mobile team'] },
   { id: 'h-qa', name: 'Quality Assurance', parentId: 'h-root', aliases: [] },
   {
     id: 'h-cons',
@@ -179,6 +127,13 @@ export const INTEL_VERTICALS: MockVertical[] = [
     aliases: ['government', 'public administration'],
   },
   { id: 'v-telco', name: 'Telco', aliases: ['telecom', 'telecommunications'] },
+  {
+    id: 'v-ecom',
+    name: 'E-commerce & Retail',
+    aliases: ['e-commerce', 'ecommerce', 'e commerce', 'retail', 'webshop', 'web shop', 'online shop', 'online retail', 'e-trgovina', 'e-trgovine', 'maloprodaja'],
+  },
+  { id: 'v-health', name: 'Healthcare', aliases: ['health', 'healthcare', 'hospital', 'e-health', 'zdravstvo'] },
+  { id: 'v-log', name: 'Logistics & Transport', aliases: ['logistics', 'transport', 'logistika'] },
 ];
 
 export const INTEL_COUNTRIES: { name: string; aliases: string[] }[] = [
@@ -221,6 +176,7 @@ export const INTEL_CERTIFICATIONS: {
   { code: 'META-FE', name: 'Meta Front-End Developer', skillId: 'react' },
   { code: 'ISTQB', name: 'ISTQB Certified Tester', skillId: 'selenium' },
   { code: 'PSM', name: 'Professional Scrum Master', skillId: null },
+  { code: 'AZ-204', name: 'Azure Developer Associate', skillId: 'azure' },
 ];
 
 export interface MockProject {
@@ -328,6 +284,17 @@ export const INTEL_PROJECTS: MockProject[] = [
     verticalId: 'v-pa',
   },
   { id: 'p-aca', name: 'Java CoE Academy', client: null, verticalId: null },
+  { id: 'p-ecm', name: 'B2C Webshop Replatforming', client: 'Nova Retail', verticalId: 'v-ecom' },
+  { id: 'p-mkt', name: 'Marketplace Checkout', client: 'Bazar Online', verticalId: 'v-ecom' },
+  { id: 'p-oms', name: 'Omnichannel Order Management', client: 'Nova Retail', verticalId: 'v-ecom' },
+  { id: 'p-hpo', name: 'Patient Portal', client: 'MediCare Group', verticalId: 'v-health' },
+  { id: 'p-ehr', name: 'e-Health Records Integration', client: 'Regional Health Fund', verticalId: 'v-health' },
+  { id: 'p-wms', name: 'Warehouse Management Cloud', client: 'TransLog', verticalId: 'v-log' },
+  { id: 'p-flt', name: 'Fleet Telematics', client: 'TransLog', verticalId: 'v-log' },
+  { id: 'p-bkp', name: 'Broker Portal', client: 'Allianz', verticalId: 'v-ins' },
+  { id: 'p-c360', name: 'Customer 360 Data Platform', client: 'Telekom Srbija', verticalId: 'v-telco' },
+  { id: 'p-iot', name: 'IoT Field Service App', client: 'EPS', verticalId: 'v-energy' },
+  { id: 'p-int', name: 'Internal Tools & Accelerators', client: null, verticalId: null },
 ];
 
 export type MockSkillStatus = 'VALIDATED' | 'SUBMITTED' | 'DRAFT' | 'REJECTED';
@@ -402,7 +369,8 @@ const pending = (
 const use = (...ids: string[]): { skillId: string; primary: boolean }[] =>
   ids.map((skillId, index) => ({ skillId, primary: index === 0 }));
 
-export const INTEL_EMPLOYEES: MockEmployee[] = [
+// Hand-written "story" people used in the demo script; the rest of the staff is generated below.
+const STORY_EMPLOYEES: MockEmployee[] = [
   {
     id: 'e1',
     name: 'Luka Stojanović',
@@ -1223,50 +1191,43 @@ export const INTEL_EMPLOYEES: MockEmployee[] = [
   },
 ];
 
+export const INTEL_EMPLOYEES: MockEmployee[] = [
+  ...STORY_EMPLOYEES,
+  ...generateStaff(new Set(STORY_EMPLOYEES.map((person) => person.name))),
+];
+
 // Staffing demands with explicit must-have and optional criteria (Module 3 demands extended with criteria).
 // createdDaysAgo decides which demand is "the new project" for AI Quick Search.
-export const INTEL_DEMANDS: (Omit<StaffingDemand, 'startDate'> & {
+type DemandFixture = Omit<StaffingDemand, 'startDate' | 'createdDate'> & {
   startInDays: number;
   createdDaysAgo: number;
-})[] = [
+};
+
+const skill = (id: string, skillId: string, minLevel: number, minYears: number | null = null, weight = 0): DemandCriterion => ({
+  id,
+  type: 'SKILL',
+  skillId,
+  minLevel,
+  minYears,
+  weight,
+});
+
+export const INTEL_DEMANDS: DemandFixture[] = [
   {
     id: 'd1',
     code: 'DEM-M01',
     title: 'Payments backend engineer',
+    role: 'Senior Backend Developer',
+    status: 'IN_SELECTION',
     client: 'NLB',
     createdDaysAgo: 12,
-    description:
-      'Backend engineer for the next phase of the Instant Payments Hub.',
+    description: 'Backend engineer for the next phase of the Instant Payments Hub.',
     startInDays: 30,
     allocationPct: 100,
     availabilityMode: 'HARD',
-    mustHave: [
-      {
-        id: 'd1m1',
-        type: 'SKILL',
-        skillId: 'java',
-        minLevel: 4,
-        minYears: 3,
-        weight: 0,
-      },
-      {
-        id: 'd1m2',
-        type: 'SKILL',
-        skillId: 'spring',
-        minLevel: 3,
-        minYears: null,
-        weight: 0,
-      },
-    ],
+    mustHave: [skill('d1m1', 'java', 4, 3), skill('d1m2', 'spring', 3)],
     optional: [
-      {
-        id: 'd1o1',
-        type: 'SKILL',
-        skillId: 'kafka',
-        minLevel: 3,
-        minYears: null,
-        weight: 3,
-      },
+      skill('d1o1', 'kafka', 3, null, 3),
       { id: 'd1o2', type: 'PROJECT_EXPERIENCE', keyword: 'payment', weight: 3 },
       { id: 'd1o3', type: 'INDUSTRY', verticalId: 'v-bank', weight: 2 },
       { id: 'd1o4', type: 'LANGUAGE', language: 'German', weight: 1 },
@@ -1276,95 +1237,38 @@ export const INTEL_DEMANDS: (Omit<StaffingDemand, 'startDate'> & {
     id: 'd2',
     code: 'DEM-M02',
     title: 'Frontend lead for mobile banking',
+    role: 'Frontend Lead',
+    status: 'OPEN',
     client: 'Banca Intesa',
     createdDaysAgo: 3,
-    description:
-      'Lead the React front end of the Mobile Banking App, Italian-speaking client team.',
+    description: 'Lead the React front end of the Mobile Banking App, Italian-speaking client team.',
     startInDays: 14,
     allocationPct: 100,
     availabilityMode: 'RANKING',
-    mustHave: [
-      {
-        id: 'd2m1',
-        type: 'SKILL',
-        skillId: 'react',
-        minLevel: 4,
-        minYears: 3,
-        weight: 0,
-      },
-      {
-        id: 'd2m2',
-        type: 'SKILL',
-        skillId: 'ts',
-        minLevel: 4,
-        minYears: null,
-        weight: 0,
-      },
-    ],
+    mustHave: [skill('d2m1', 'react', 4, 3), skill('d2m2', 'ts', 4)],
     optional: [
       { id: 'd2o1', type: 'INDUSTRY', verticalId: 'v-bank', weight: 3 },
       { id: 'd2o2', type: 'LANGUAGE', language: 'Italian', weight: 3 },
-      {
-        id: 'd2o3',
-        type: 'SKILL',
-        skillId: 'playwright',
-        minLevel: 2,
-        minYears: null,
-        weight: 1,
-      },
-      {
-        id: 'd2o4',
-        type: 'SKILL',
-        skillId: 'node',
-        minLevel: 3,
-        minYears: null,
-        weight: 1,
-      },
+      skill('d2o3', 'playwright', 2, null, 1),
+      skill('d2o4', 'node', 3, null, 1),
     ],
   },
   {
     id: 'd3',
     code: 'DEM-M03',
     title: 'Cloud platform engineer',
+    role: 'Platform Engineer',
+    status: 'IN_SELECTION',
     client: 'EPS',
     createdDaysAgo: 20,
     description: 'Run the Kubernetes platform for the smart metering roll-out.',
     startInDays: 0,
     allocationPct: 100,
     availabilityMode: 'HARD',
-    mustHave: [
-      {
-        id: 'd3m1',
-        type: 'SKILL',
-        skillId: 'k8s',
-        minLevel: 4,
-        minYears: null,
-        weight: 0,
-      },
-      {
-        id: 'd3m2',
-        type: 'CERTIFICATION',
-        certificationCode: 'CKA',
-        weight: 0,
-      },
-    ],
+    mustHave: [skill('d3m1', 'k8s', 4), { id: 'd3m2', type: 'CERTIFICATION', certificationCode: 'CKA', weight: 0 }],
     optional: [
-      {
-        id: 'd3o1',
-        type: 'SKILL',
-        skillId: 'terraform',
-        minLevel: 3,
-        minYears: null,
-        weight: 2,
-      },
-      {
-        id: 'd3o2',
-        type: 'SKILL',
-        skillId: 'aws',
-        minLevel: 3,
-        minYears: null,
-        weight: 2,
-      },
+      skill('d3o1', 'terraform', 3, null, 2),
+      skill('d3o2', 'aws', 3, null, 2),
       { id: 'd3o3', type: 'INDUSTRY', verticalId: 'v-energy', weight: 2 },
     ],
   },
@@ -1372,49 +1276,186 @@ export const INTEL_DEMANDS: (Omit<StaffingDemand, 'startDate'> & {
     id: 'd4',
     code: 'DEM-M04',
     title: 'Data engineer for risk platform',
+    role: 'Data Engineer',
+    status: 'OPEN',
     client: 'UniCredit',
     createdDaysAgo: 8,
     description: 'Extend the Risk Data Lake with streaming ingestion.',
     startInDays: 45,
     allocationPct: 100,
     availabilityMode: 'RANKING',
-    mustHave: [
-      {
-        id: 'd4m1',
-        type: 'SKILL',
-        skillId: 'python',
-        minLevel: 3,
-        minYears: null,
-        weight: 0,
-      },
-      {
-        id: 'd4m2',
-        type: 'SKILL',
-        skillId: 'spark',
-        minLevel: 3,
-        minYears: null,
-        weight: 0,
-      },
-    ],
+    mustHave: [skill('d4m1', 'python', 3), skill('d4m2', 'spark', 3)],
     optional: [
-      {
-        id: 'd4o1',
-        type: 'SKILL',
-        skillId: 'kafka',
-        minLevel: 3,
-        minYears: null,
-        weight: 2,
-      },
-      {
-        id: 'd4o2',
-        type: 'SKILL',
-        skillId: 'azure',
-        minLevel: 3,
-        minYears: null,
-        weight: 1,
-      },
+      skill('d4o1', 'kafka', 3, null, 2),
+      skill('d4o2', 'azure', 3, null, 1),
       { id: 'd4o3', type: 'INDUSTRY', verticalId: 'v-bank', weight: 2 },
     ],
+  },
+  {
+    id: 'd5',
+    code: 'DEM-M05',
+    title: 'Senior Java Developer',
+    role: 'Senior Java Developer',
+    status: 'OPEN',
+    client: 'Generali',
+    createdDaysAgo: 6,
+    description: 'Senior engineer for the Claims Platform microservices, deployed on AWS.',
+    startInDays: 30,
+    allocationPct: 100,
+    availabilityMode: 'HARD',
+    mustHave: [skill('d5m1', 'java', 4, 5), skill('d5m2', 'spring', 3)],
+    optional: [skill('d5o1', 'aws', 3, null, 3), skill('d5o2', 'kafka', 2, null, 2), skill('d5o3', 'docker', 2, null, 1)],
+  },
+  {
+    id: 'd6',
+    code: 'DEM-M06',
+    title: 'Vue Frontend Developer',
+    role: 'Frontend Developer',
+    status: 'OPEN',
+    client: 'Nova Retail',
+    createdDaysAgo: 1,
+    description: 'Build the new storefront of the B2C Webshop in Vue 3 with Vuetify.',
+    startInDays: 21,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d6m1', 'vue', 3)],
+    optional: [
+      skill('d6o1', 'ts', 3, null, 3),
+      skill('d6o2', 'vuetify', 2, null, 2),
+      { id: 'd6o3', type: 'INDUSTRY', verticalId: 'v-ecom', weight: 2 },
+    ],
+  },
+  {
+    id: 'd7',
+    code: 'DEM-M07',
+    title: 'Full-stack Developer',
+    role: 'Full-stack Developer',
+    status: 'OPEN',
+    client: 'Bazar Online',
+    createdDaysAgo: 9,
+    description: 'Node.js services and React screens for the Marketplace Checkout.',
+    startInDays: 14,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d7m1', 'node', 3)],
+    optional: [skill('d7o1', 'react', 3, null, 3), skill('d7o2', 'pg', 2, null, 2), skill('d7o3', 'docker', 2, null, 1)],
+  },
+  {
+    id: 'd8',
+    code: 'DEM-M08',
+    title: '.NET Backend Developer',
+    role: 'Backend Developer',
+    status: 'IN_SELECTION',
+    client: 'MediCare Group',
+    createdDaysAgo: 15,
+    description: 'C# APIs for the Patient Portal, hosted on Azure.',
+    startInDays: 30,
+    allocationPct: 100,
+    availabilityMode: 'HARD',
+    mustHave: [skill('d8m1', 'dotnet', 3, 2)],
+    optional: [
+      skill('d8o1', 'azure', 3, null, 3),
+      skill('d8o2', 'sql', 3, null, 2),
+      { id: 'd8o3', type: 'INDUSTRY', verticalId: 'v-health', weight: 2 },
+    ],
+  },
+  {
+    id: 'd9',
+    code: 'DEM-M09',
+    title: 'DevOps Engineer',
+    role: 'DevOps Engineer',
+    status: 'OPEN',
+    client: 'TransLog',
+    createdDaysAgo: 5,
+    description: 'Containerise and operate the Warehouse Management Cloud.',
+    startInDays: 7,
+    allocationPct: 100,
+    availabilityMode: 'HARD',
+    mustHave: [skill('d9m1', 'k8s', 3)],
+    optional: [skill('d9o1', 'docker', 3, null, 2), skill('d9o2', 'aws', 3, null, 3), skill('d9o3', 'terraform', 2, null, 2)],
+  },
+  {
+    id: 'd10',
+    code: 'DEM-M10',
+    title: 'Python Developer',
+    role: 'Python Developer',
+    status: 'ON_HOLD',
+    client: 'Telekom Srbija',
+    createdDaysAgo: 30,
+    description: 'APIs and data pipelines for the Customer 360 Data Platform.',
+    startInDays: 45,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d10m1', 'python', 3)],
+    optional: [skill('d10o1', 'fastapi', 2, null, 3), skill('d10o2', 'spark', 2, null, 2), skill('d10o3', 'sql', 3, null, 1)],
+  },
+  {
+    id: 'd11',
+    code: 'DEM-M11',
+    title: 'React Developer',
+    role: 'Frontend Developer',
+    status: 'OPEN',
+    client: 'Allianz',
+    createdDaysAgo: 4,
+    description: 'React and TypeScript screens for the Broker Portal, high test coverage required.',
+    startInDays: 10,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d11m1', 'react', 3)],
+    optional: [skill('d11o1', 'ts', 3, null, 3), skill('d11o2', 'jest', 2, null, 2), skill('d11o3', 'playwright', 2, null, 1)],
+  },
+  {
+    id: 'd12',
+    code: 'DEM-M12',
+    title: 'Cloud Engineer (Azure)',
+    role: 'Cloud Engineer',
+    status: 'OPEN',
+    client: 'Regional Health Fund',
+    createdDaysAgo: 11,
+    description: 'Azure landing zone and AKS for the e-Health Records Integration.',
+    startInDays: 30,
+    allocationPct: 100,
+    availabilityMode: 'HARD',
+    mustHave: [skill('d12m1', 'azure', 3)],
+    optional: [
+      skill('d12o1', 'k8s', 3, null, 3),
+      skill('d12o2', 'terraform', 2, null, 2),
+      { id: 'd12o3', type: 'CERTIFICATION', certificationCode: 'AZ-305', weight: 2 },
+    ],
+  },
+  {
+    id: 'd13',
+    code: 'DEM-M13',
+    title: 'E-commerce Java Developer',
+    role: 'Backend Developer',
+    status: 'OPEN',
+    client: 'Nova Retail',
+    createdDaysAgo: 2,
+    description: 'Order and checkout services for the Omnichannel Order Management platform.',
+    startInDays: 20,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d13m1', 'java', 3)],
+    optional: [
+      { id: 'd13o1', type: 'INDUSTRY', verticalId: 'v-ecom', weight: 4 },
+      { id: 'd13o2', type: 'PROJECT_EXPERIENCE', keyword: 'checkout', weight: 2 },
+      skill('d13o3', 'spring', 3, null, 2),
+    ],
+  },
+  {
+    id: 'd14',
+    code: 'DEM-M14',
+    title: 'Senior Full-stack Developer',
+    role: 'Senior Full-stack Developer',
+    status: 'IN_SELECTION',
+    client: 'TransLog',
+    createdDaysAgo: 18,
+    description: 'JavaScript across the stack for the Fleet Telematics portal; backend experience is essential.',
+    startInDays: 30,
+    allocationPct: 100,
+    availabilityMode: 'RANKING',
+    mustHave: [skill('d14m1', 'js', 4), skill('d14m2', 'node', 3, 2)],
+    optional: [skill('d14o1', 'vue', 3, null, 2), skill('d14o2', 'react', 3, null, 2), skill('d14o3', 'aws', 2, null, 1)],
   },
 ];
 
@@ -1468,7 +1509,7 @@ const LAST_NAMES = [
   'Greco',
 ];
 // Applicants per month, oldest first; the last entry is the current month.
-const MONTHLY_APPLICANTS = [3, 4, 6, 5, 7, 4, 8, 9, 6, 10, 8, 5];
+const MONTHLY_APPLICANTS = [1, 1, 2, 1, 2, 1, 2, 2, 2, 2, 3, 4];
 
 export const INTEL_APPLICANTS: MockApplicant[] = MONTHLY_APPLICANTS.flatMap(
   (count, monthIndex) =>

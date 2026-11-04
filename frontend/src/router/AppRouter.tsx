@@ -57,6 +57,7 @@ const IntelligenceAnalyticsPage = lazy(() => import('@pages/Intelligence/Analyti
 const DemandMatchingPage = lazy(() => import('@pages/Intelligence/Matching'));
 const ExternalApplicantsPage = lazy(() => import('@pages/Intelligence/Applicants'));
 const SearchCostsPage = lazy(() => import('@pages/Intelligence/Costs'));
+const AiArchitecturePage = lazy(() => import('@pages/Intelligence/AiArchitecture'));
 
 const placeholderRoutes = [
   { path: '/demand-management/pipeline', title: 'Pipeline' },
@@ -207,7 +208,8 @@ function AppRouter(): JSX.Element {
               { path: '/intelligence/analytics', element: <IntelligenceAnalyticsPage /> },
               { path: '/intelligence/matching', element: <DemandMatchingPage /> },
               { path: '/intelligence/applicants', element: <ExternalApplicantsPage /> },
-              { path: '/intelligence/costs', element: <SearchCostsPage /> }
+              { path: '/intelligence/costs', element: <SearchCostsPage /> },
+              { path: '/intelligence/ai-architecture', element: <AiArchitecturePage /> }
             ].map(({ path, element }) => (
               <Route key={path} element={<ProtectedRoute allowedRoles={getNavigationRoles(path)} />}>
                 <Route path={path} element={element} />

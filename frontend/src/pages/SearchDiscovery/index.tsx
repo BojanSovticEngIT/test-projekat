@@ -1,7 +1,11 @@
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
+import DataObjectIcon from '@mui/icons-material/DataObject';
 import HistoryIcon from '@mui/icons-material/History';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
+import SendIcon from '@mui/icons-material/Send';
 import TuneIcon from '@mui/icons-material/Tune';
 import {
   Alert,
@@ -12,6 +16,7 @@ import {
   CardActionArea,
   CardContent,
   Chip,
+  Collapse,
   Grid,
   MenuItem,
   Paper,
@@ -22,19 +27,30 @@ import {
   Typography
 } from '@mui/material';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { WorkforcePageHeader } from '../../components/WorkforcePageHeader';
 import ExportMenu from '../../components/ExportMenu/ExportMenu';
+import AnswerPanel, { AiThinking } from '@features/intelligence/AnswerPanel';
 import CriteriaForm from '@features/intelligence/CriteriaForm';
 import { PersonDrawer, ResultsTable } from '@features/intelligence/SearchResults';
 import { HistoryDrawer, SaveSearchDialog, SavedSearchesDrawer } from '@features/intelligence/SearchLibrary';
-import { fetchSearch, useIntelligenceCatalog, useInterpret, useRecordRun, useSaveSearch, useSearch, useTouchSavedSearch } from '@features/intelligence/intelligenceApi';
+import {
+  fetchSearch,
+  useAnswer,
+  useIntelligenceCatalog,
+  useInterpret,
+  useRecordRun,
+  useSaveSearch,
+  useSearch,
+  useTouchSavedSearch
+} from '@features/intelligence/intelligenceApi';
 import {
   MODE_LABELS,
   QUICK_SEARCHES,
   SENIORITY_LABELS,
   SORT_LABELS,
   STATUS_LABELS,
+  WORKFORCE_KIND_LABELS,
   createEmptyFilters,
   filtersFromParams,
   isEmptyFilters,
@@ -43,8 +59,10 @@ import {
 import useAuthStore from '@store/authStore';
 import type { Report } from '../../lib/export';
 import type {
+  AnswerSpec,
   InterpretResponse,
   IntelligenceCatalog,
+  QueryAnswer,
   SavedSearch,
   SearchFilters,
   SearchMode,
@@ -58,18 +76,50 @@ interface Run {
   mode: SearchMode;
   label: string;
   query: string | null;
+  // Statistic to compute next to the people list (AI questions such as "how many" or "what percentage").
+  answerSpec: AnswerSpec | null;
   runId: number;
   // Only user-initiated runs go to history and usage; paging and sorting do not.
   record: boolean;
 }
 
-const AI_EXAMPLES = [
-  'Find senior Java developers who have worked on payment integrations and are available for a new project.',
-  'Show me employees who have been working on the same project for more than two years.',
-  'Find people who have maintained the same skill for more than three years.',
-  'Which employees have experience in technologies required for our new project?',
-  'Kubernets engineer on bench'
+const PROMPT_GROUPS: { label: string; prompts: string[] }[] = [
+  {
+    label: 'Workforce figures',
+    prompts: [
+      'How many Java developers do we have?',
+      'What percentage of our employees are Java developers?',
+      'Compare Java and .NET developers.',
+      'How many employees are currently unallocated?'
+    ]
+  },
+  {
+    label: 'Experience and tenure',
+    prompts: [
+      'How many employees have been working on the same project for more than 2 years?',
+      'Find employees who have been using React for more than 5 years.',
+      'Show me Java developers with more than 3 years of experience.'
+    ]
+  },
+  {
+    label: 'Availability',
+    prompts: ['Find Vue developers available next month.', 'Show me developers available when their current project ends.']
+  },
+  {
+    label: 'Matching and experience',
+    prompts: [
+      'Find people with Java as a Must-have skill and Spring Boot as an Optional skill.',
+      'Show employees with e-commerce project experience.',
+      'Find people with experience in cloud technologies.'
+    ]
+  },
+  {
+    label: 'Na srpskom',
+    prompts: ['Koliko ljudi je preko 2 godine na istom projektu?', 'Koliko ljudi ima isti skill duže od 3 godine?', 'Koji procenat zaposlenih su Java programeri?']
+  }
 ];
+
+const REFINE_EXAMPLES = ['only in Serbia', 'at least 50% free next month', 'senior only', 'with Azure experience'];
 
 const ENGINE_LABEL: Record<InterpretResponse['engine'], { label: string; color: 'secondary' | 'success' | 'warning' }> = {
   SIMULATED_AI: { label: 'Simulated AI (demo rule engine, no LLM connected)', color: 'secondary' },
@@ -81,7 +131,9 @@ export const summarize = (filters: SearchFilters, catalog: IntelligenceCatalog):
   const name = (list: { id: string; name: string }[], id: string): string => list.find((item) => item.id === id)?.name ?? id;
   const out: string[] = [];
   if (filters.text.trim()) out.push(`"${filters.text.trim()}"`);
-  filters.skills.forEach((skill) => out.push(`${name(catalog.skills, skill.skillId)} ≥ ${levelLabel(skill.minLevel)}${skill.minYears ? `, ${skill.minYears}+ y` : ''}`));
+  filters.skills.forEach((skill) =>
+    out.push(`${name(catalog.skills, skill.skillId)} ≥ ${levelLabel(skill.minLevel)}${skill.minYears ? `, ${skill.yearsMode === 'AT_LEAST' ? '≥' : '>'} ${skill.minYears} y` : ''}`)
+  );
   if (filters.anySkillMinYears !== null) out.push(`Same skill > ${filters.anySkillMinYears} y`);
   if (filters.projectText.trim()) out.push(`Project history "${filters.projectText.trim()}"`);
   if (filters.currentProjectId) out.push(`On ${name(catalog.projects, filters.currentProjectId)}`);
@@ -92,24 +144,45 @@ export const summarize = (filters: SearchFilters, catalog: IntelligenceCatalog):
   filters.allocationStatuses.forEach((status) => out.push(STATUS_LABELS[status]));
   if (filters.minAvailablePct !== null) out.push(`≥ ${filters.minAvailablePct}% free`);
   if (filters.availableFrom) out.push(`from ${filters.availableFrom}`);
+  if (filters.rollingOffWithinDays !== null) out.push(`Project ends ≤ ${filters.rollingOffWithinDays} days`);
   filters.countries.forEach((country) => out.push(country));
   filters.seniority.forEach((value) => out.push(SENIORITY_LABELS[value]));
   if (filters.verticalId) out.push(`${name(catalog.verticals, filters.verticalId)} experience`);
+  filters.workforceTypes.forEach((kind) => out.push(WORKFORCE_KIND_LABELS[kind]));
   return out;
+};
+
+const answerKpis = (answer: QueryAnswer | undefined): NonNullable<Report['kpis']> => {
+  if (!answer) return [];
+  if (answer.kind === 'STAT')
+    return [
+      { label: answer.subject, value: String(answer.count) },
+      { label: 'Share of population', value: `${answer.percentage}%` },
+      { label: 'Population', value: answer.population.label }
+    ];
+  if (answer.kind === 'COMPARE') return answer.rows.map((row) => ({ label: row.label, value: `${row.count} (${row.percentage}%)` }));
+  return [
+    { label: 'Eligible', value: `${answer.eligibleCount} of ${answer.evaluated}` },
+    { label: 'Best score', value: answer.top[0] ? String(answer.top[0].score) : '—' }
+  ];
 };
 
 function SearchDiscoveryPage(): JSX.Element {
   const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const catalogQuery = useIntelligenceCatalog();
   const catalog = catalogQuery.data;
-  const [tab, setTab] = useState<SearchMode>('STRUCTURED');
+  const [tab, setTab] = useState<SearchMode>('AI');
   const [draft, setDraft] = useState<SearchFilters>(createEmptyFilters);
   const [run, setRun] = useState<Run | null>(null);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const [aiQuery, setAiQuery] = useState('');
+  const [refineText, setRefineText] = useState('');
   const [interpretation, setInterpretation] = useState<InterpretResponse | null>(null);
+  const [showJson, setShowJson] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchResultRow | null>(null);
   const [savedOpen, setSavedOpen] = useState(false);
@@ -118,12 +191,15 @@ function SearchDiscoveryPage(): JSX.Element {
   const [editingSaved, setEditingSaved] = useState<SavedSearch | null>(null);
   const runCounter = useRef(0);
   const recorded = useRef(new Set<number>());
+  const resultsRef = useRef<HTMLDivElement | null>(null);
 
   const interpret = useInterpret();
   const recordRun = useRecordRun();
   const saveSearch = useSaveSearch();
   const touchSaved = useTouchSavedSearch();
   const search = useSearch(run?.filters ?? null, run?.sort ?? 'RELEVANCE', page, size, run?.runId ?? 0);
+  const answerRequest = useMemo(() => (run?.answerSpec ? { ...run.answerSpec, filters: run.filters } : null), [run]);
+  const answer = useAnswer(answerRequest);
 
   const start = (next: Omit<Run, 'runId'>): void => {
     runCounter.current += 1;
@@ -138,9 +214,18 @@ function SearchDiscoveryPage(): JSX.Element {
     const fromLink = filtersFromParams(params);
     if (fromLink) {
       setDraft(fromLink);
-      start({ filters: fromLink, sort: params.get('sort') === 'TENURE' ? 'TENURE' : params.get('sort') === 'EXPERIENCE' ? 'EXPERIENCE' : 'RELEVANCE', mode: 'STRUCTURED', label: `Drill-down: ${summarize(fromLink, catalog).join(' · ')}`, query: null, record: true });
+      setTab('STRUCTURED');
+      start({
+        filters: fromLink,
+        sort: params.get('sort') === 'TENURE' ? 'TENURE' : params.get('sort') === 'EXPERIENCE' ? 'EXPERIENCE' : 'RELEVANCE',
+        mode: 'STRUCTURED',
+        label: `Drill-down: ${summarize(fromLink, catalog).join(' · ')}`,
+        query: null,
+        answerSpec: null,
+        record: true
+      });
     } else {
-      start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, record: false });
+      start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, answerSpec: null, record: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
@@ -148,25 +233,53 @@ function SearchDiscoveryPage(): JSX.Element {
   useEffect(() => {
     if (!run?.record || !search.data || search.isPlaceholderData || recorded.current.has(run.runId)) return;
     recorded.current.add(run.runId);
-    recordRun.mutate({ mode: run.mode, label: run.label, query: run.query, filters: run.filters, sort: run.sort, resultCount: search.data.total });
+    recordRun.mutate({ mode: run.mode, label: run.label, query: run.query, filters: run.filters, sort: run.sort, resultCount: search.data.total, answerSpec: run.answerSpec });
   }, [run, search.data, search.isPlaceholderData, recordRun]);
 
-  const runAi = async (text: string): Promise<void> => {
-    setAiQuery(text);
+  const runAi = async (text: string, context: string | null = null): Promise<void> => {
     if (!text.trim()) return;
-    const result = await interpret.mutateAsync(text);
-    setInterpretation(result);
-    setDraft(result.filters);
-    start({ filters: result.filters, sort: result.sort, mode: 'AI', label: `"${text.trim()}"`, query: text.trim(), record: true });
+    if (!context) setAiQuery(text);
+    setShowJson(false);
+    try {
+      const result = await interpret.mutateAsync({ query: text, context });
+      setInterpretation(result);
+      setDraft(result.filters);
+      setRefineText('');
+      setAiQuery(result.query);
+      start({ filters: result.filters, sort: result.sort, mode: 'AI', label: `"${result.query}"`, query: result.query, answerSpec: result.answerSpec, record: true });
+    } catch {
+      // The error is shown from interpret.isError; the previous results stay on screen.
+    }
   };
 
-  const openSaved = (saved: { filters: SearchFilters; sort: SearchSort; mode: SearchMode; query: string | null; name?: string; label?: string }): void => {
+  const resetAi = (): void => {
+    setAiQuery('');
+    setRefineText('');
+    setInterpretation(null);
+    setShowEditor(false);
+    setShowJson(false);
+    interpret.reset();
+    setDraft(createEmptyFilters());
+    start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, answerSpec: null, record: false });
+  };
+
+  const openSaved = (saved: { filters: SearchFilters; sort: SearchSort; mode: SearchMode; query: string | null; answerSpec?: AnswerSpec | null; name?: string; label?: string }): void => {
     setDraft(saved.filters);
     setTab(saved.mode);
     setAiQuery(saved.query ?? '');
     setInterpretation(null);
-    start({ filters: saved.filters, sort: saved.sort, mode: saved.mode, label: saved.name ?? saved.label ?? labelFor(saved.filters), query: saved.query, record: true });
+    start({
+      filters: saved.filters,
+      sort: saved.sort,
+      mode: saved.mode,
+      label: saved.name ?? saved.label ?? labelFor(saved.filters),
+      query: saved.query,
+      answerSpec: saved.answerSpec ?? null,
+      record: true
+    });
   };
+
+  const showPeople = (): void => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const data = search.data;
   const scope = catalog?.scope;
@@ -177,18 +290,33 @@ function SearchDiscoveryPage(): JSX.Element {
     const all = await fetchSearch(run.filters, run.sort, 0, 500);
     const sensitive = all.scope.canSeeSeniority;
     return {
-      title: 'Workforce search results',
-      subtitle: `${MODE_LABELS[run.mode]} search${run.query ? `: "${run.query}"` : ''} · sorted by ${SORT_LABELS[all.sort]}`,
+      title: run.mode === 'AI' && run.query ? `Search & Discovery: ${run.query}` : 'Workforce search results',
+      subtitle: `${MODE_LABELS[run.mode]} search · sorted by ${SORT_LABELS[all.sort]}`,
       generatedAt: new Date(),
       generatedBy: user?.username,
       criteria: all.criteria.length ? all.criteria : ['No filters: everyone in your scope'],
-      notes: [`Scope: ${all.scope.label}`, 'Internal employees only. External applicants are never part of employee search.', ...(all.total > 500 ? ['Only the first 500 rows are exported.'] : [])],
+      notes: [
+        `Scope: ${all.scope.label}`,
+        'Internal staff only. External applicants are never part of employee search.',
+        ...(answer.data && answer.data.kind !== 'MATCH' ? [`Population: ${answer.data.population.definition}`] : []),
+        'Demo data: figures are illustrative and do not describe the real workforce.',
+        ...(all.total > 500 ? ['Only the first 500 rows are exported.'] : [])
+      ],
       kpis: [
-        { label: 'Results', value: String(all.total) },
-        { label: 'On bench', value: String(all.rows.filter((row) => row.allocationStatus === 'BENCH').length) },
+        ...answerKpis(answer.data),
+        { label: 'People listed', value: String(all.total) },
         { label: 'Availability date', value: all.targetDate }
       ],
+      charts:
+        answer.data?.kind === 'STAT' && answer.data.breakdown
+          ? [{ title: answer.data.breakdown.title, data: answer.data.breakdown.rows.map((row) => ({ label: row.label, value: row.count })) }]
+          : answer.data?.kind === 'COMPARE'
+            ? [{ title: 'Comparison', data: answer.data.rows.map((row) => ({ label: row.label, value: row.count })) }]
+            : [],
       tables: [
+        ...(answer.data?.kind === 'STAT' && answer.data.lenses.length
+          ? [{ title: 'Definitions', columns: ['Definition', 'People', 'Share'], rows: answer.data.lenses.map((lens) => [lens.label, lens.count, `${lens.percentage}%`]) }]
+          : []),
         {
           title: 'Results',
           columns: [
@@ -200,6 +328,7 @@ function SearchDiscoveryPage(): JSX.Element {
             'Current project',
             'On project since',
             'Current project (years)',
+            'Project ends',
             'Allocation',
             'Free %',
             'Matched skills',
@@ -216,6 +345,7 @@ function SearchDiscoveryPage(): JSX.Element {
             row.currentProject?.name ?? null,
             row.currentProject?.since ?? null,
             row.currentProject?.tenureYears ?? null,
+            row.currentProject?.endDate ?? null,
             STATUS_LABELS[row.allocationStatus],
             row.availablePct,
             row.matchedSkills.map((skill) => `${skill.name} ${skill.level}/5`).join(', '),
@@ -225,22 +355,25 @@ function SearchDiscoveryPage(): JSX.Element {
           ])
         }
       ],
-      fileName: 'workforce-search'
+      fileName: 'search-and-discovery'
     };
   };
 
   const quickProjectName = useMemo(() => catalog?.projects.find((project) => project.id === projectId)?.name, [catalog, projectId]);
 
-  if (catalogQuery.isError) return <Alert severity="error">Workforce discovery is not available for your role.</Alert>;
+  if (catalogQuery.isError) return <Alert severity="error">Search & Discovery is not available for your role.</Alert>;
 
   return (
     <Box>
       <WorkforcePageHeader
-        title="Discovery"
-        description="Find internal employees by skills, experience, projects and availability. Three ways to search, one result list."
-        breadcrumbs={[{ label: 'Workforce Intelligence', to: '/intelligence' }, { label: 'Discovery' }]}
+        title="Search & Discovery"
+        description="Ask a question in plain English or Serbian, or search with filters. Find people, count them, compare technologies and match them to demands."
+        breadcrumbs={[{ label: 'Search & Discovery' }]}
         actions={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button startIcon={<SchemaOutlinedIcon />} variant="text" onClick={() => navigate('/intelligence/ai-architecture')}>
+              How AI search works
+            </Button>
             <Button startIcon={<BookmarkBorderIcon />} variant="outlined" onClick={() => setSavedOpen(true)}>
               Saved searches
             </Button>
@@ -253,7 +386,7 @@ function SearchDiscoveryPage(): JSX.Element {
       {scope ? (
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
           <Chip size="small" color="primary" variant="outlined" label={`Searching: ${scope.label}`} />
-          <Chip size="small" color="warning" variant="outlined" label="Demo data" />
+          <Chip size="small" color="warning" variant="outlined" label="Demo data · simulated AI" />
           <Typography variant="body2" color="text.secondary">
             {scope.description} External applicants are never included.
           </Typography>
@@ -262,11 +395,196 @@ function SearchDiscoveryPage(): JSX.Element {
 
       <Paper variant="outlined" sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, value: SearchMode) => setTab(value)} aria-label="Search mode" variant="scrollable">
+          <Tab value="AI" icon={<AutoAwesomeOutlinedIcon />} iconPosition="start" label="AI Quick Search" />
           <Tab value="STRUCTURED" icon={<TuneIcon />} iconPosition="start" label="Structured search" />
           <Tab value="QUICK" icon={<BoltOutlinedIcon />} iconPosition="start" label="Quick search" />
-          <Tab value="AI" icon={<AutoAwesomeOutlinedIcon />} iconPosition="start" label="AI Quick Search" />
         </Tabs>
         <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+          {tab === 'AI' && catalog ? (
+            <Stack spacing={2}>
+              <Box
+                component="form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void runAi(aiQuery);
+                }}
+              >
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    value={aiQuery}
+                    onChange={(event) => setAiQuery(event.target.value)}
+                    placeholder='Ask anything about your workforce, e.g. "What percentage of our employees are Java developers?" or "Koliko ljudi je preko 2 godine na istom projektu?"'
+                    inputProps={{ 'aria-label': 'Natural-language query', maxLength: 500 }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void runAi(aiQuery);
+                      }
+                    }}
+                  />
+                  <Stack direction={{ xs: 'row', md: 'column' }} spacing={1} sx={{ minWidth: 150 }}>
+                    <Button type="submit" variant="contained" startIcon={<SendIcon />} disabled={!aiQuery.trim() || interpret.isPending}>
+                      Ask
+                    </Button>
+                    <Button startIcon={<RestartAltIcon />} onClick={resetAi} disabled={interpret.isPending || (!aiQuery && !interpretation)}>
+                      Clear
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+
+              {!interpretation && !interpret.isPending ? (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Suggested questions
+                  </Typography>
+                  <Grid container spacing={1.5} sx={{ mt: 0.25 }}>
+                    {PROMPT_GROUPS.map((group) => (
+                      <Grid item xs={12} sm={6} lg={4} key={group.label}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          {group.label}
+                        </Typography>
+                        <Stack spacing={0.75} alignItems="flex-start">
+                          {group.prompts.map((prompt) => (
+                            <Chip
+                              key={prompt}
+                              size="small"
+                              variant="outlined"
+                              icon={<AutoAwesomeOutlinedIcon />}
+                              label={prompt}
+                              onClick={() => void runAi(prompt)}
+                              sx={{ maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
+                            />
+                          ))}
+                        </Stack>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              ) : null}
+
+              <AiThinking active={interpret.isPending} />
+              {interpret.isError ? (
+                <Alert severity="error" action={<Button onClick={() => setTab('STRUCTURED')}>Use structured search</Button>}>
+                  The AI service did not answer. Your previous results are still shown. Try again, or use structured search, which does not need AI.
+                </Alert>
+              ) : null}
+
+              {interpretation && !interpret.isPending ? (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      What I understood
+                    </Typography>
+                    <Chip size="small" color="primary" label={`Intent: ${interpretation.intentLabel}`} />
+                    {interpretation.language === 'SR' ? <Chip size="small" variant="outlined" label="Serbian question" /> : null}
+                    <Chip size="small" color={ENGINE_LABEL[interpretation.engine].color} variant="outlined" label={ENGINE_LABEL[interpretation.engine].label} />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={
+                        interpretation.usage.inputTokens
+                          ? `~${interpretation.usage.inputTokens} in / ${interpretation.usage.outputTokens} out tokens · est. $${interpretation.usage.estimatedCostUsd.toFixed(5)}`
+                          : 'No AI tokens used · $0'
+                      }
+                    />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    “{interpretation.query}”
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ my: 1.5 }}>
+                    {interpretation.recognized.map((item) => (
+                      <Chip
+                        key={item}
+                        color={item.startsWith('Optional:') ? 'success' : item.startsWith('Must-have:') ? 'error' : 'primary'}
+                        variant={item.startsWith('Optional:') || item.startsWith('Must-have:') ? 'outlined' : 'filled'}
+                        label={item}
+                      />
+                    ))}
+                    {interpretation.notUnderstood.map((word) => (
+                      <Chip key={word} color="warning" variant="outlined" label={`Not understood: ${word}`} />
+                    ))}
+                  </Stack>
+                  {interpretation.notes.map((note) => (
+                    <Typography key={note} variant="body2">
+                      • {note}
+                    </Typography>
+                  ))}
+
+                  <Box
+                    component="form"
+                    sx={{ mt: 2 }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void runAi(refineText, interpretation.query);
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Refine this question"
+                        placeholder={`e.g. ${REFINE_EXAMPLES.join(' · ')}`}
+                        value={refineText}
+                        onChange={(event) => setRefineText(event.target.value)}
+                        inputProps={{ maxLength: 200 }}
+                      />
+                      <Button type="submit" variant="outlined" disabled={!refineText.trim()}>
+                        Refine
+                      </Button>
+                    </Stack>
+                  </Box>
+
+                  <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+                    <Button size="small" startIcon={<TuneIcon />} onClick={() => setShowEditor(!showEditor)} aria-expanded={showEditor}>
+                      {showEditor ? 'Hide criteria' : 'Edit criteria'}
+                    </Button>
+                    <Button size="small" startIcon={<DataObjectIcon />} onClick={() => setShowJson(!showJson)} aria-expanded={showJson}>
+                      {showJson ? 'Hide structured query' : 'Show structured query (JSON)'}
+                    </Button>
+                  </Stack>
+                  <Collapse in={showJson}>
+                    <Box
+                      component="pre"
+                      sx={{ mt: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, fontSize: 13, overflowX: 'auto', maxWidth: '100%' }}
+                      aria-label="Structured query"
+                    >
+                      {JSON.stringify(interpretation.structured, null, 2)}
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      In production an Azure OpenAI model returns this JSON; the backend validates it and runs the query. The model never sees employee records.
+                    </Typography>
+                  </Collapse>
+                  <Collapse in={showEditor}>
+                    <Box sx={{ mt: 2 }}>
+                      <CriteriaForm catalog={catalog} filters={draft} onChange={setDraft} />
+                      <Button
+                        sx={{ mt: 2 }}
+                        variant="contained"
+                        onClick={() =>
+                          start({
+                            filters: draft,
+                            sort: run?.sort ?? interpretation.sort,
+                            mode: 'AI',
+                            label: `"${interpretation.query}" (edited)`,
+                            query: interpretation.query,
+                            answerSpec: interpretation.answerSpec,
+                            record: true
+                          })
+                        }
+                      >
+                        Search with these criteria
+                      </Button>
+                    </Box>
+                  </Collapse>
+                </Paper>
+              ) : null}
+            </Stack>
+          ) : null}
+
           {tab === 'STRUCTURED' && catalog ? (
             <>
               {editingSaved ? (
@@ -276,14 +594,17 @@ function SearchDiscoveryPage(): JSX.Element {
               ) : null}
               <CriteriaForm catalog={catalog} filters={draft} onChange={setDraft} />
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <Button variant="contained" onClick={() => start({ filters: draft, sort: run?.sort ?? 'RELEVANCE', mode: 'STRUCTURED', label: labelFor(draft), query: null, record: true })}>
+                <Button
+                  variant="contained"
+                  onClick={() => start({ filters: draft, sort: run?.sort ?? 'RELEVANCE', mode: 'STRUCTURED', label: labelFor(draft), query: null, answerSpec: editingSaved?.answerSpec ?? null, record: true })}
+                >
                   Search
                 </Button>
                 <Button
                   disabled={isEmptyFilters(draft)}
                   onClick={() => {
                     setDraft(createEmptyFilters());
-                    start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, record: false });
+                    start({ filters: createEmptyFilters(), sort: 'NAME', mode: 'STRUCTURED', label: 'Everyone in scope', query: null, answerSpec: null, record: false });
                   }}
                 >
                   Clear all
@@ -293,7 +614,15 @@ function SearchDiscoveryPage(): JSX.Element {
                     variant="outlined"
                     onClick={() =>
                       void saveSearch
-                        .mutateAsync({ id: editingSaved.id, name: editingSaved.name, mode: editingSaved.mode, filters: draft, sort: run?.sort ?? editingSaved.sort, query: editingSaved.query })
+                        .mutateAsync({
+                          id: editingSaved.id,
+                          name: editingSaved.name,
+                          mode: editingSaved.mode,
+                          filters: draft,
+                          sort: run?.sort ?? editingSaved.sort,
+                          query: editingSaved.query,
+                          answerSpec: editingSaved.answerSpec ?? null
+                        })
                         .then(() => setEditingSaved(null))
                     }
                   >
@@ -315,7 +644,7 @@ function SearchDiscoveryPage(): JSX.Element {
                       onClick={() => {
                         const built = quick.build(catalog, projectId ?? undefined);
                         setDraft(built.filters);
-                        start({ ...built, mode: 'QUICK', label: quick.needsProject ? `${quick.label}: ${quickProjectName}` : quick.label, query: null, record: true });
+                        start({ ...built, mode: 'QUICK', label: quick.needsProject ? `${quick.label}: ${quickProjectName}` : quick.label, query: null, answerSpec: null, record: true });
                       }}
                     >
                       <CardContent>
@@ -342,97 +671,14 @@ function SearchDiscoveryPage(): JSX.Element {
               ))}
             </Grid>
           ) : null}
-
-          {tab === 'AI' && catalog ? (
-            <Stack spacing={2}>
-              <Alert severity="info" icon={<AutoAwesomeOutlinedIcon />}>
-                Describe who you need in plain words. The query is turned into structured criteria you can review and change. In this demo the interpretation is
-                done by a deterministic rule engine that simulates an AI model; no AI service is called and costs are estimates.
-              </Alert>
-              <Box
-                component="form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void runAi(aiQuery);
-                }}
-              >
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={aiQuery}
-                    onChange={(event) => setAiQuery(event.target.value)}
-                    placeholder="e.g. Find senior Java developers who have worked on payment integrations and are available for a new project."
-                    inputProps={{ 'aria-label': 'Natural-language query', maxLength: 500 }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        void runAi(aiQuery);
-                      }
-                    }}
-                  />
-                  <Button type="submit" variant="contained" disabled={!aiQuery.trim() || interpret.isPending} sx={{ minWidth: 140 }}>
-                    Interpret & search
-                  </Button>
-                </Stack>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
-                <Typography variant="caption" color="text.secondary">
-                  Examples:
-                </Typography>
-                {AI_EXAMPLES.map((example) => (
-                  <Chip key={example} size="small" variant="outlined" label={example} onClick={() => void runAi(example)} sx={{ maxWidth: '100%' }} />
-                ))}
-              </Stack>
-              {interpret.isError ? <Alert severity="error">The query could not be interpreted.</Alert> : null}
-              {interpretation ? (
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      Interpreted criteria
-                    </Typography>
-                    <Chip size="small" color={ENGINE_LABEL[interpretation.engine].color} label={ENGINE_LABEL[interpretation.engine].label} />
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={
-                        interpretation.usage.inputTokens
-                          ? `~${interpretation.usage.inputTokens} in / ${interpretation.usage.outputTokens} out tokens · est. $${interpretation.usage.estimatedCostUsd.toFixed(6)}`
-                          : 'No AI tokens used · $0'
-                      }
-                    />
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    {interpretation.engineNote}
-                  </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ my: 1.5 }}>
-                    {interpretation.recognized.map((item) => (
-                      <Chip key={item} color="primary" label={item} />
-                    ))}
-                  </Stack>
-                  {interpretation.notes.map((note) => (
-                    <Typography key={note} variant="body2">
-                      • {note}
-                    </Typography>
-                  ))}
-                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-                    Review and change the criteria
-                  </Typography>
-                  <CriteriaForm catalog={catalog} filters={draft} onChange={setDraft} />
-                  <Button
-                    sx={{ mt: 2 }}
-                    variant="contained"
-                    onClick={() => start({ filters: draft, sort: run?.sort ?? interpretation.sort, mode: 'AI', label: `"${aiQuery.trim()}" (edited)`, query: aiQuery.trim(), record: true })}
-                  >
-                    Search with these criteria
-                  </Button>
-                </Paper>
-              ) : null}
-            </Stack>
-          ) : null}
         </Box>
       </Paper>
+
+      {run?.answerSpec ? (
+        <Box sx={{ mb: 2 }}>
+          <AnswerPanel answer={answer.data} loading={answer.isFetching} error={answer.isError} onShowPeople={showPeople} />
+        </Box>
+      ) : null}
 
       {data?.warnings.map((warning) => (
         <Alert key={warning} severity="warning" sx={{ mb: 1 }}>
@@ -441,7 +687,7 @@ function SearchDiscoveryPage(): JSX.Element {
       ))}
 
       {run ? (
-        <>
+        <Box ref={resultsRef}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1} sx={{ mb: 1 }}>
             <Box>
               <Typography variant="subtitle1" fontWeight={600}>
@@ -454,7 +700,7 @@ function SearchDiscoveryPage(): JSX.Element {
                 ))}
               </Stack>
             </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <TextField
                 select
                 size="small"
@@ -469,12 +715,21 @@ function SearchDiscoveryPage(): JSX.Element {
                   </MenuItem>
                 ))}
               </TextField>
-              <Button variant="outlined" startIcon={<BookmarkBorderIcon />} onClick={() => setSaveSource({ filters: run.filters, sort: run.sort, mode: run.mode, label: run.label, query: run.query })}>
+              <Button
+                variant="outlined"
+                startIcon={<BookmarkBorderIcon />}
+                onClick={() => setSaveSource({ filters: run.filters, sort: run.sort, mode: run.mode, label: run.label, query: run.query, answerSpec: run.answerSpec })}
+              >
                 Save search
               </Button>
               <ExportMenu getReport={buildReport} disabled={!data} />
             </Stack>
           </Stack>
+          {run.mode === 'AI' && data && data.total === 0 ? (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Nobody matches all of the understood criteria. Open “Edit criteria” above to relax one, or refine the question.
+            </Alert>
+          ) : null}
           <ResultsTable
             rows={data?.rows ?? []}
             total={data?.total ?? 0}
@@ -491,7 +746,7 @@ function SearchDiscoveryPage(): JSX.Element {
             }}
             onOpen={setSelected}
           />
-        </>
+        </Box>
       ) : null}
 
       <PersonDrawer row={selected} onClose={() => setSelected(null)} />
@@ -520,7 +775,7 @@ function SearchDiscoveryPage(): JSX.Element {
           setHistoryOpen(false);
         }}
         onSave={(entry) => {
-          setSaveSource({ filters: entry.filters, sort: entry.sort, mode: entry.mode, label: entry.label, query: entry.query });
+          setSaveSource({ filters: entry.filters, sort: entry.sort, mode: entry.mode, label: entry.label, query: entry.query, answerSpec: entry.answerSpec ?? null });
           setHistoryOpen(false);
         }}
       />
@@ -529,7 +784,8 @@ function SearchDiscoveryPage(): JSX.Element {
         initialName={(saveSource?.label ?? '').replace(/^"|"$/g, '').slice(0, 80)}
         onClose={() => setSaveSource(null)}
         onSave={async (name) => {
-          if (saveSource) await saveSearch.mutateAsync({ name, mode: saveSource.mode, filters: saveSource.filters, sort: saveSource.sort, query: saveSource.query });
+          if (saveSource)
+            await saveSearch.mutateAsync({ name, mode: saveSource.mode, filters: saveSource.filters, sort: saveSource.sort, query: saveSource.query, answerSpec: saveSource.answerSpec });
         }}
       />
     </Box>

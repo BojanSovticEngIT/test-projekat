@@ -100,7 +100,7 @@ export function ResultsTable({ rows, total, page, size, sort, loading, showRelev
               <TableCell colSpan={6}>
                 <Box sx={{ py: 5, textAlign: 'center' }}>
                   <InboxOutlinedIcon sx={{ fontSize: 44, color: 'text.disabled' }} />
-                  <Typography color="text.secondary">No one matches these criteria. Remove a criterion to widen the search.</Typography>
+                  <Typography color="text.secondary">No one matches these criteria. Remove a criterion, lower a level or year threshold, or pick a later date.</Typography>
                 </Box>
               </TableCell>
             </TableRow>
@@ -125,8 +125,13 @@ export function ResultsTable({ rows, total, page, size, sort, loading, showRelev
                   <>
                     <Typography variant="body2">{row.currentProject.name}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {row.currentProject.tenureYears} y on project · {row.currentProject.pct}%
+                      {row.currentProject.tenureYears} y on project (since {row.currentProject.since}) · {row.currentProject.pct}%
                     </Typography>
+                    {row.currentProject.endDate ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Ends {row.currentProject.endDate}
+                      </Typography>
+                    ) : null}
                   </>
                 ) : (
                   <Typography variant="body2" color="text.secondary">

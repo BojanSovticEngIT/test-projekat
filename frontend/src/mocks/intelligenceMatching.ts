@@ -50,9 +50,12 @@ export const materializeDemand = (
   item: (typeof INTEL_DEMANDS)[number],
   today = startOfToday()
 ): StaffingDemand => {
-  const { startInDays, createdDaysAgo: _created, ...rest } = item;
-  void _created;
-  return { ...rest, startDate: toIsoDate(addDays(today, startInDays)) };
+  const { startInDays, createdDaysAgo, ...rest } = item;
+  return {
+    ...rest,
+    startDate: toIsoDate(addDays(today, startInDays)),
+    createdDate: toIsoDate(addDays(today, -createdDaysAgo)),
+  };
 };
 
 export const criterionLabel = (criterion: DemandCriterion): string => {
@@ -160,6 +163,16 @@ export const sanitizeDemand = (
       typeof raw.title === 'string' && raw.title.trim()
         ? raw.title.trim().slice(0, 120)
         : 'Custom requirements',
+    role: typeof raw.role === 'string' ? raw.role.slice(0, 80) : '',
+    status:
+      raw.status === 'ON_HOLD' || raw.status === 'IN_SELECTION'
+        ? raw.status
+        : 'OPEN',
+    createdDate:
+      typeof raw.createdDate === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(raw.createdDate)
+        ? raw.createdDate
+        : toIsoDate(today),
     client: typeof raw.client === 'string' ? raw.client.slice(0, 80) : '',
     description:
       typeof raw.description === 'string' ? raw.description.slice(0, 500) : '',
@@ -483,10 +496,13 @@ export const evaluateDemand = (
         b.availablePctOnStart - a.availablePctOnStart ||
         a.name.localeCompare(b.name)
     );
-  // Only near misses are listed: people who meet at least one must-have.
+  // Only near misses are listed: people who meet at least one must-have, or who have a required skill
+  // but not at the required level or years (credit > 0), e.g. a strong fit with too little experience.
   const notEligible = results
     .filter(
-      (item) => !item.eligible && item.mustHave.some((result) => result.met)
+      (item) =>
+        !item.eligible &&
+        item.mustHave.some((result) => result.met || result.credit > 0)
     )
     .sort(
       (a, b) =>

@@ -6,6 +6,9 @@ import {
 } from '@tanstack/react-query';
 import axiosClient from '@api/axiosClient';
 import type {
+  AnswerRequest,
+  AnswerSpec,
+  QueryAnswer,
   ApplicantTrendResponse,
   ApplicantsResponse,
   DashboardResponse,
@@ -70,12 +73,30 @@ export const useSearch = (
 
 export const useInterpret = () =>
   useMutation({
-    mutationFn: async (query: string): Promise<InterpretResponse> =>
+    // `context` is the previous question when the user refines it ("only in Serbia").
+    mutationFn: async ({
+      query,
+      context,
+    }: {
+      query: string;
+      context?: string | null;
+    }): Promise<InterpretResponse> =>
       (
         await axiosClient.post<InterpretResponse>(`${BASE}/interpret`, {
           query,
+          context: context ?? undefined,
         })
       ).data,
+  });
+
+// Statistics for an interpreted question, computed by the backend from the (possibly edited) criteria.
+export const useAnswer = (request: AnswerRequest | null) =>
+  useQuery({
+    queryKey: ['intelligence', 'answer', request],
+    enabled: request !== null,
+    retry: false,
+    queryFn: async (): Promise<QueryAnswer> =>
+      (await axiosClient.post<QueryAnswer>(`${BASE}/answer`, request)).data,
   });
 
 export const useSavedSearches = (enabled = true) =>
@@ -141,6 +162,7 @@ export const useRecordRun = () => {
       filters: SearchFilters;
       sort: SearchSort;
       resultCount: number;
+      answerSpec?: AnswerSpec | null;
     }) => {
       await axiosClient.post(`${BASE}/history`, input);
     },

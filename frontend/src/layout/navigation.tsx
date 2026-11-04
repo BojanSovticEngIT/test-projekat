@@ -19,6 +19,8 @@ import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined';
 import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import TravelExploreOutlinedIcon from '@mui/icons-material/TravelExploreOutlined';
+import ManageSearchOutlinedIcon from '@mui/icons-material/ManageSearchOutlined';
+import SchemaOutlinedIcon from '@mui/icons-material/SchemaOutlined';
 import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined';
 import HowToRegOutlinedIcon from '@mui/icons-material/HowToRegOutlined';
@@ -29,7 +31,13 @@ import type { ReactElement } from 'react';
 import { MEETING_PARTICIPANT_ROLES } from '../features/demand/meetingOptions';
 import { UserRole } from '../types/enums';
 
-export type NavigationModuleId = 'skill-matrix' | 'workforce' | 'demand-management' | 'intelligence' | 'administration';
+export type NavigationModuleId =
+  | 'skill-matrix'
+  | 'workforce'
+  | 'demand-management'
+  | 'search-discovery'
+  | 'intelligence'
+  | 'administration';
 
 export interface NavigationItem {
   label: string;
@@ -184,19 +192,30 @@ export const navigationModules: NavigationModule[] = [
     ]
   },
   {
+    // Primary entry point: a single sidebar item that opens the search page directly (no submenu).
+    id: 'search-discovery',
+    label: 'Search & Discovery',
+    path: '/search',
+    icon: <ManageSearchOutlinedIcon />,
+    description: 'AI Quick Search, structured search, workforce figures and demand matching.',
+    items: [
+      {
+        label: 'Search & Discovery',
+        path: '/search',
+        description: 'Ask in plain language or filter: find, count and compare internal employees',
+        icon: <ManageSearchOutlinedIcon />,
+        roles: SEARCH_ROLES,
+        inSidebar: false
+      }
+    ]
+  },
+  {
     id: 'intelligence',
     label: 'Workforce Intelligence',
     path: '/intelligence',
     icon: <TravelExploreOutlinedIcon />,
-    description: 'Discovery, analytics, demand matching, recruiting figures and search costs.',
+    description: 'Analytics, demand matching, recruiting figures, AI architecture and search costs.',
     items: [
-      {
-        label: 'Discovery',
-        path: '/search',
-        description: 'Structured, quick and AI search for internal employees',
-        icon: <TravelExploreOutlinedIcon />,
-        roles: SEARCH_ROLES
-      },
       {
         label: 'Dashboard',
         path: '/intelligence/dashboard',
@@ -224,6 +243,13 @@ export const navigationModules: NavigationModule[] = [
         description: 'Recruiting figures, names only',
         icon: <HowToRegOutlinedIcon />,
         roles: MATCHING_ROLES
+      },
+      {
+        label: 'AI architecture & cost',
+        path: '/intelligence/ai-architecture',
+        description: 'How AI search works today (demo) and in production, with cost estimates',
+        icon: <SchemaOutlinedIcon />,
+        roles: INSIGHT_ROLES
       },
       {
         label: 'Usage & costs',

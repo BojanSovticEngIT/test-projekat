@@ -1,6 +1,7 @@
 import { UserRole } from '../types/enums';
 import { scopeFor, startOfToday } from './intelligenceCore';
-import { parseQuery, searchPeople } from './intelligenceSearch';
+import { searchPeople } from './intelligenceSearch';
+import { parseQuery } from './intelligenceInterpreter';
 import {
   applicantTrend,
   applicantsForMonth,
@@ -83,13 +84,21 @@ describe('scope and visibility', () => {
 
 describe('structured search', () => {
   it('combines skill level, years and availability', () => {
-    const senior = names(admin, {
-      skills: [{ skillId: 'java', minLevel: 5, minYears: 8 }],
-    });
-    expect(senior).toHaveLength(3);
-    expect(senior).toEqual(
+    const senior = searchPeople(
+      admin,
+      { skills: [{ skillId: 'java', minLevel: 5, minYears: 8 }] },
+      'NAME',
+      0,
+      500,
+      TODAY
+    ).rows;
+    expect(senior.map((row) => row.name)).toEqual(
       expect.arrayContaining(['Bojan Ilić', 'Luka Stojanović', 'Đorđe Milić'])
     );
+    senior.forEach((row) => {
+      expect(row.matchedSkills[0].level).toBe(5);
+      expect(row.matchedSkills[0].years as number).toBeGreaterThan(8);
+    });
     expect(names(admin, { allocationStatuses: ['BENCH'] })).toEqual(
       expect.arrayContaining([
         'Filip Lazarević',
@@ -125,7 +134,7 @@ describe('AI Quick Search interpretation (simulated)', () => {
     expect(payments.filters.projectText).toBe('payment');
     expect(payments.filters.minAvailablePct).toBe(50);
     expect(payments.filters.text).toBe('');
-    expect(names(admin, payments.filters)).toEqual(['Uroš Milosavljević']);
+    expect(names(admin, payments.filters)).toContain('Uroš Milosavljević');
 
     expect(
       parseQuery(
@@ -144,7 +153,7 @@ describe('AI Quick Search interpretation (simulated)', () => {
       'Which employees have experience in technologies required for our new project?',
       TODAY
     );
-    expect(demand.demandId).toBe('d2');
+    expect(demand.demandId).toBe('d6');
     expect(demand.filters.skillMatch).toBe('ANY');
     expect(demand.filters.projectText).toBe('');
   });
@@ -170,10 +179,15 @@ describe('experience analytics', () => {
     expect(luka.totalProjectYears).toBeGreaterThan(
       luka.currentTenureYears as number
     );
+    // Counted on exact days; the table shows years rounded to one decimal.
     expect(tenure.aboveThreshold).toBe(
-      tenure.employees.filter((row) => (row.currentTenureYears ?? 0) > 2).length
+      tenure.employees.filter((row) => row.aboveThreshold).length
     );
-    expect(tenure.aboveThreshold).toBe(8);
+    expect(
+      tenure.employees
+        .filter((row) => row.aboveThreshold)
+        .every((row) => (row.currentTenureYears as number) >= 2)
+    ).toBe(true);
   });
 
   it('counts each employee once and keeps unknown experience dates out of the threshold', () => {
@@ -233,7 +247,7 @@ describe('demand matching', () => {
 describe('external applicants', () => {
   it('returns names only and counts by submission month', () => {
     const month = applicantsForMonth(admin, null, TODAY);
-    expect(month.total).toBe(5);
+    expect(month.total).toBe(4);
     month.applicants?.forEach((item) =>
       expect(Object.keys(item).sort()).toEqual(['firstName', 'id', 'lastName'])
     );

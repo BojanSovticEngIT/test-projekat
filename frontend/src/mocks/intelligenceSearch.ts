@@ -7,10 +7,10 @@ import type {
   SearchSort,
   Seniority,
   SkillCriterion,
+  WorkforceKind,
 } from '../types/intelligence.types';
 import {
   INTEL_COUNTRIES,
-  INTEL_DEMANDS,
   INTEL_PROJECTS,
   INTEL_SKILLS,
   INTEL_UNITS,
@@ -25,13 +25,11 @@ import {
   clamp,
   daysBetween,
   employeeName,
-  escapeRegExp,
   fromIsoDate,
   hasIndustry,
   hasProjectMatching,
+  formatDate,
   isBusinessUnit,
-  levenshtein,
-  normalize,
   projectById,
   projectViews,
   skillName,
@@ -58,8 +56,9 @@ const SORTS: SearchSort[] = [
   'AVAILABILITY',
   'TENURE',
   'EXPERIENCE',
+  'ROLL_OFF',
 ];
-export const DEFAULT_MIN_LEVEL = 3;
+const WORKFORCE_KINDS: WorkforceKind[] = ['EMPLOYEE', 'B2B', 'SUPPLIER'];
 const STATUS_LABEL: Record<AllocationStatus, string> = {
   BENCH: 'On bench',
   PARTIAL: 'Partially allocated',
@@ -83,6 +82,8 @@ export const emptyFilters = (): SearchFilters => ({
   countries: [],
   seniority: [],
   verticalId: null,
+  workforceTypes: [],
+  rollingOffWithinDays: null,
 });
 
 const numberOrNull = (
@@ -120,6 +121,7 @@ export const sanitizeFilters = (input: unknown): SearchFilters => {
       skillId: item.skillId,
       minLevel: clamp(Math.round(Number(item.minLevel) || 1), 1, 5),
       minYears: numberOrNull(item.minYears, 0, 40),
+      yearsMode: item.yearsMode === 'AT_LEAST' ? ('AT_LEAST' as const) : ('MORE_THAN' as const),
     }));
   const units = new Set(INTEL_UNITS.map((unit) => unit.id));
   const list = <T extends string>(
@@ -167,6 +169,10 @@ export const sanitizeFilters = (input: unknown): SearchFilters => {
     )
       ? (raw.verticalId as string)
       : null,
+    workforceTypes: list<WorkforceKind>(raw.workforceTypes, (item) =>
+      WORKFORCE_KINDS.includes(item as WorkforceKind)
+    ),
+    rollingOffWithinDays: numberOrNull(raw.rollingOffWithinDays, 1, 365),
   };
 };
 
@@ -179,7 +185,7 @@ export const describeFilters = (filters: SearchFilters): string[] => {
   if (filters.text.trim()) out.push(`Text: "${filters.text.trim()}"`);
   filters.skills.forEach((criterion) =>
     out.push(
-      `${skillName(criterion.skillId)} ≥ ${criterion.minLevel} (${LEVEL_LABELS[criterion.minLevel]})${criterion.minYears ? `, ${criterion.minYears}+ years` : ''}`
+      `${skillName(criterion.skillId)} ≥ ${criterion.minLevel} (${LEVEL_LABELS[criterion.minLevel]})${criterion.minYears ? `, ${criterion.yearsMode === 'AT_LEAST' ? 'at least' : 'more than'} ${criterion.minYears} years` : ''}`
     )
   );
   if (filters.skills.length > 1)
@@ -221,6 +227,12 @@ export const describeFilters = (filters: SearchFilters): string[] => {
     out.push(`Seniority: ${filters.seniority.join(', ')}`);
   if (filters.verticalId)
     out.push(`Industry experience: ${verticalName(filters.verticalId)}`);
+  if (filters.rollingOffWithinDays !== null)
+    out.push(`Current project ends within ${filters.rollingOffWithinDays} days`);
+  if (filters.workforceTypes.length)
+    out.push(
+      `Contract: ${filters.workforceTypes.map((item) => (item === 'EMPLOYEE' ? 'employees' : item === 'B2B' ? 'B2B contractors' : 'supplier staff')).join(', ')}`
+    );
   return out;
 };
 
@@ -241,11 +253,18 @@ const searchableText = (profile: Profile): string =>
 const meetsSkill = (profile: Profile, criterion: SkillCriterion): boolean => {
   const owned = profile.skills.get(criterion.skillId);
   if (!owned || owned.level < criterion.minLevel) return false;
-  return (
-    !criterion.minYears ||
-    (owned.years !== null && owned.years > criterion.minYears)
-  );
+  return yearsOk(owned.years, criterion);
 };
+
+export const yearsOk = (
+  years: number | null,
+  criterion: { minYears?: number | null; yearsMode?: 'MORE_THAN' | 'AT_LEAST' }
+): boolean =>
+  !criterion.minYears ||
+  (years !== null &&
+    (criterion.yearsMode === 'AT_LEAST'
+      ? years >= criterion.minYears
+      : years > criterion.minYears));
 
 export const searchPeople = (
   rule: ScopeRule,
@@ -350,7 +369,23 @@ export const searchPeople = (
       return;
     if (seniority.length && !seniority.includes(profile.seniority)) return;
     if (filters.verticalId && !hasIndustry(profile, filters.verticalId)) return;
+    if (
+      filters.workforceTypes.length &&
+      !filters.workforceTypes.includes(profile.workforceType)
+    )
+      return;
+    if (
+      filters.rollingOffWithinDays !== null &&
+      !(
+        profile.current &&
+        profile.current.endDay !== null &&
+        profile.current.endDay >= 0 &&
+        profile.current.endDay <= filters.rollingOffWithinDays
+      )
+    )
+      return;
 
+    const matchedSkillIds = new Set(filters.skills.map((item) => item.skillId));
     let relevance: number | null = null;
     const reasons: string[] = [];
     if (filters.skills.length) {
@@ -388,6 +423,29 @@ export const searchPeople = (
         `Relevance = 60% skill fit + 25% availability + 15% used on projects`
       );
     }
+    if (filters.minCurrentTenureYears !== null && profile.current)
+      reasons.push(
+        `On ${projectById(profile.current.projectId)?.name} since ${toIsoDate(addDays(today, profile.current.startDay))} (${toYears(profile.current.tenureDays)} years, continuous)`
+      );
+    if (filters.anySkillMinYears !== null)
+      [...profile.skills.values()]
+        .filter(
+          (owned) =>
+            owned.years !== null &&
+            owned.years > (filters.anySkillMinYears as number) &&
+            (!filters.skills.length || matchedSkillIds.has(owned.skillId))
+        )
+        .sort((a, b) => (b.years ?? 0) - (a.years ?? 0))
+        .slice(0, 3)
+        .forEach((owned) =>
+          reasons.push(
+            `${skillName(owned.skillId)}: ${owned.quality === 'ESTIMATED' ? '~' : ''}${owned.years} years (${owned.quality === 'RECORDED' ? 'recorded start date' : 'estimated from projects'})`
+          )
+        );
+    if (filters.rollingOffWithinDays !== null && profile.current?.endDay != null)
+      reasons.push(
+        `Current project ends ${formatDate(addDays(today, profile.current.endDay))}; ${availabilityLabel(profile, profile.current.endDay + 1, today)}`
+      );
     const matchedIds = new Set(
       filters.skills.map((criterion) => criterion.skillId)
     );
@@ -420,6 +478,10 @@ export const searchPeople = (
             pct: profile.current.pct,
             since: toIsoDate(addDays(today, profile.current.startDay)),
             tenureYears: toYears(profile.current.tenureDays),
+            endDate:
+              profile.current.endDay === null
+                ? null
+                : toIsoDate(addDays(today, profile.current.endDay)),
           }
         : null,
       totalProjectYears: toYears(profile.totalProjectDays),
@@ -461,6 +523,10 @@ export const searchPeople = (
       (b.currentProject?.tenureYears ?? -1) -
         (a.currentProject?.tenureYears ?? -1) || byName(a, b),
     EXPERIENCE: (a, b) => experience(b) - experience(a) || byName(a, b),
+    ROLL_OFF: (a, b) =>
+      (a.currentProject?.endDate ?? '9999').localeCompare(
+        b.currentProject?.endDate ?? '9999'
+      ) || byName(a, b),
   };
   rows.sort(comparators[sort]);
 
@@ -479,432 +545,3 @@ export const searchPeople = (
   };
 };
 
-// ---------------------------------------------------------------- query interpretation (rule-based; stands in for an LLM)
-
-const NUMBER_WORDS: Record<string, number> = {
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-};
-const NUM =
-  '(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)';
-const toNumber = (value: string): number =>
-  NUMBER_WORDS[value] ?? Number(value);
-
-const STOPWORDS = new Set(
-  (
-    'a an the and or with for in on at of to from by who whom which that i we me us our my need needs needed looking look find show ' +
-    'give get list someone somebody anyone people person persons employee employees staff engineer engineers developer developers dev devs ' +
-    'consultant consultants specialist specialists expert experts experience experienced skills skill knowledge know knows can is are be ' +
-    'been have has having had good strong solid least minimum also team member members resource resources profile profiles background ' +
-    'than more over years year please able ready some any all working worked work works currently current same project projects new ' +
-    'available free availability capacity integrations integration systems system platform platforms maintained kept used using ' +
-    'technologies technology required requires require which what whose there here them they their it its into as do does'
-  ).split(/\s+/)
-);
-
-const SENIORITY_PATTERNS: [RegExp, Seniority][] = [
-  [/(^|\s)(junior|jr)(?=\s|$)/, 'JUNIOR'],
-  [/(^|\s)(mid-level|midlevel|medior|mid)(?=\s|$)/, 'MID'],
-  [/(^|\s)(senior|sr)(?=\s|$)/, 'SENIOR'],
-  [/(^|\s)(lead|principal|staff)(?=\s|$)/, 'LEAD'],
-];
-
-const LEVEL_WORDS: Record<string, number> = {
-  master: 5,
-  expert: 5,
-  advanced: 4,
-  strong: 4,
-  experienced: 3,
-  solid: 3,
-  intermediate: 2,
-  basic: 1,
-  beginner: 1,
-};
-
-interface Phrase<T> {
-  text: string;
-  value: T;
-}
-
-const phrases = <T>(entries: { names: string[]; value: T }[]): Phrase<T>[] =>
-  entries
-    .flatMap(({ names, value }) =>
-      names.map((name) => ({ text: normalize(name), value }))
-    )
-    .sort((a, b) => b.text.length - a.text.length);
-
-const SKILL_PHRASES = phrases(
-  INTEL_SKILLS.map((skill) => ({
-    names: [skill.name, ...skill.aliases],
-    value: skill.id,
-  }))
-);
-const COUNTRY_PHRASES = phrases(
-  INTEL_COUNTRIES.map((country) => ({
-    names: [country.name, ...country.aliases],
-    value: country.name,
-  }))
-);
-const UNIT_PHRASES = phrases(
-  INTEL_UNITS.filter((unit) => unit.parentId).map((unit) => ({
-    names: [unit.name, ...unit.aliases],
-    value: unit.id,
-  }))
-);
-const VERTICAL_PHRASES = phrases(
-  INTEL_VERTICALS.map((item) => ({
-    names: [item.name, ...item.aliases],
-    value: item.id,
-  }))
-);
-const PROJECT_PHRASES = phrases(
-  INTEL_PROJECTS.map((project) => ({
-    names: [project.name],
-    value: project.id,
-  }))
-);
-
-export interface ParsedQuery {
-  filters: SearchFilters;
-  sort: SearchSort;
-  notes: string[];
-  recognized: string[];
-  // True when every word was a catalog term or a known phrase, so no semantic interpretation was needed.
-  simple: boolean;
-  demandId: string | null;
-}
-
-export const parseQuery = (
-  text: string,
-  today = startOfToday()
-): ParsedQuery => {
-  const filters = emptyFilters();
-  const notes: string[] = [];
-  const recognized: string[] = [];
-  let sort: SearchSort = 'RELEVANCE';
-  let demandId: string | null = null;
-  let semantic = false;
-  let work = ` ${normalize(text)
-    .replace(/[,;!?()"'`]/g, ' ')
-    .replace(/\.(\s|$)/g, ' $1')} `;
-  const blank = (start: number, length: number): void => {
-    work =
-      work.slice(0, start) + ' '.repeat(length) + work.slice(start + length);
-  };
-  const takeAll = (
-    pattern: RegExp,
-    onMatch: (match: RegExpExecArray) => void
-  ): void => {
-    const regex = new RegExp(pattern.source, 'g');
-    const found: RegExpExecArray[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(work)) !== null) {
-      found.push(match);
-      if (match[0].length === 0) regex.lastIndex += 1;
-    }
-    found.forEach((item) => {
-      onMatch(item);
-      blank(item.index, item[0].length);
-    });
-  };
-  const phraseRegex = (phrase: string): RegExp =>
-    new RegExp(`(^|\\s)${escapeRegExp(phrase)}(?=\\s|$)`, 'g');
-
-  // "the same project for more than two years"
-  takeAll(
-    new RegExp(
-      `(?:same|current|one) project (?:for )?(?:more than |over |at least |longer than )?${NUM}\\+? years?`
-    ),
-    (match) => {
-      filters.minCurrentTenureYears = toNumber(match[1]);
-      sort = 'TENURE';
-      semantic = true;
-      recognized.push(`On the same project for more than ${match[1]} years`);
-    }
-  );
-  // "the same skill for more than three years"
-  takeAll(
-    new RegExp(
-      `(?:same|a|one) skill (?:for )?(?:more than |over |at least |longer than )?${NUM}\\+? years?`
-    ),
-    (match) => {
-      filters.anySkillMinYears = toNumber(match[1]);
-      sort = 'EXPERIENCE';
-      semantic = true;
-      recognized.push(`Same skill for more than ${match[1]} years`);
-    }
-  );
-  // "technologies required for our new project"
-  takeAll(
-    /\b(?:our|the) (?:new|next|upcoming|latest) (?:project|demand|engagement)\b/,
-    () => {
-      const demand = [...INTEL_DEMANDS].sort(
-        (a, b) => a.createdDaysAgo - b.createdDaysAgo
-      )[0];
-      demandId = demand.id;
-      semantic = true;
-      [...demand.mustHave, ...demand.optional]
-        .filter((criterion) => criterion.type === 'SKILL' && criterion.skillId)
-        .forEach((criterion) =>
-          filters.skills.push({
-            skillId: criterion.skillId as string,
-            minLevel: 1,
-            minYears: null,
-          })
-        );
-      filters.skillMatch = 'ANY';
-      recognized.push(
-        `Technologies of the newest demand ${demand.code} "${demand.title}"`
-      );
-      notes.push(
-        `"Our new project" was read as the newest staffing demand ${demand.code}. Use Demand matching for the full must-have check.`
-      );
-    }
-  );
-
-  // Current project by name ("working on Core Banking Modernisation") or project history ("worked on payment integrations").
-  PROJECT_PHRASES.forEach((phrase) =>
-    takeAll(
-      new RegExp(
-        `(working on|currently on|assigned to|worked on|experience (?:on|in|with))?\\s*${escapeRegExp(phrase.text)}(?=\\s|$)`
-      ),
-      (match) => {
-        if (match[1] && /working on|currently on|assigned to/.test(match[1])) {
-          filters.currentProjectId = phrase.value;
-          recognized.push(`Currently on ${projectById(phrase.value)?.name}`);
-        } else {
-          filters.projectText = projectById(phrase.value)?.name ?? '';
-          recognized.push(`Worked on ${projectById(phrase.value)?.name}`);
-        }
-      }
-    )
-  );
-
-  SKILL_PHRASES.forEach((phrase) => {
-    const regex = phraseRegex(phrase.text);
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(work)) !== null) {
-      const start = match.index + match[1].length;
-      const end = start + phrase.text.length;
-      let level = DEFAULT_MIN_LEVEL;
-      let years: number | null = null;
-      const before = new RegExp(
-        `(?:(master|expert|advanced|strong|experienced|solid|intermediate|basic|beginner)\\s+)?(?:${NUM}\\+?\\s*(?:years?|yrs)\\s+(?:of\\s+)?(?:experience\\s+(?:in|with)\\s+)?)?(?:in\\s+|with\\s+)?$`
-      ).exec(work.slice(0, start));
-      if (before && before[0].trim()) {
-        if (before[1]) level = LEVEL_WORDS[before[1]];
-        if (before[2]) years = toNumber(before[2]);
-        blank(before.index, before[0].length);
-      }
-      const after = new RegExp(
-        `^\\s*(?:(?:level|lvl)\\s*([1-5])\\+?|for (?:more than |over |at least )?${NUM}\\+?\\s*(?:years?|yrs)|${NUM}\\+\\s*(?:years?|yrs))`
-      ).exec(work.slice(end));
-      if (after) {
-        if (after[1]) level = Number(after[1]);
-        if (after[2] || after[3]) years = toNumber(after[2] ?? after[3]);
-        blank(end, after[0].length);
-      }
-      if (!filters.skills.some((item) => item.skillId === phrase.value)) {
-        filters.skills.push({
-          skillId: phrase.value,
-          minLevel: level,
-          minYears: years,
-        });
-        recognized.push(
-          `${skillName(phrase.value)} ≥ ${LEVEL_LABELS[level]}${years ? `, ${years}+ years` : ''}`
-        );
-      }
-      blank(start, phrase.text.length);
-      regex.lastIndex = 0;
-    }
-  });
-
-  COUNTRY_PHRASES.forEach((phrase) =>
-    takeAll(phraseRegex(phrase.text), () => {
-      if (!filters.countries.includes(phrase.value)) {
-        filters.countries.push(phrase.value);
-        recognized.push(`Location: ${phrase.value}`);
-      }
-    })
-  );
-  UNIT_PHRASES.forEach((phrase) =>
-    takeAll(phraseRegex(phrase.text), () => {
-      const target = isBusinessUnit(phrase.value)
-        ? filters.businessUnitIds
-        : filters.teamIds;
-      if (!target.includes(phrase.value)) {
-        target.push(phrase.value);
-        recognized.push(
-          `${isBusinessUnit(phrase.value) ? 'Business unit' : 'Team'}: ${unitName(phrase.value)}`
-        );
-      }
-    })
-  );
-  VERTICAL_PHRASES.forEach((phrase) =>
-    takeAll(phraseRegex(phrase.text), () => {
-      filters.verticalId = filters.verticalId ?? phrase.value;
-      recognized.push(`Industry experience: ${verticalName(phrase.value)}`);
-    })
-  );
-
-  takeAll(
-    /\b(?:worked on|working on|experience (?:on|in|with)|projects? (?:like|such as|in|on))\s+([a-z0-9-]+)(?:\s+(?:projects?|integrations?|systems?|platforms?|solutions?))?/,
-    (match) => {
-      const word = match[1].replace(/s$/, '');
-      if (STOPWORDS.has(match[1]) || STOPWORDS.has(word)) return;
-      filters.projectText = word;
-      semantic = true;
-      recognized.push(`Project history mentions "${word}"`);
-    }
-  );
-
-  takeAll(/(\d{1,3})\s*%/, (match) => {
-    filters.minAvailablePct = clamp(Number(match[1]), 1, 100);
-    recognized.push(`At least ${filters.minAvailablePct}% free`);
-  });
-  takeAll(/\b(?:on (?:the )?bench|unallocated|not allocated)\b/, () => {
-    filters.allocationStatuses = ['BENCH'];
-    recognized.push('On bench');
-  });
-  takeAll(/\b(?:partially allocated|part[- ]time)\b/, () => {
-    filters.allocationStatuses = ['PARTIAL'];
-    recognized.push('Partially allocated');
-  });
-  takeAll(/\b(?:fully allocated|fully booked|busy)\b/, () => {
-    filters.allocationStatuses = ['FULL'];
-    recognized.push('Fully allocated');
-  });
-
-  const setDate = (date: Date, label: string): void => {
-    filters.availableFrom =
-      daysBetween(today, date) <= 0 ? null : toIsoDate(date);
-    recognized.push(`Needed from ${label}`);
-  };
-  takeAll(/\b(?:now|today|immediately|asap|right away)\b/, () =>
-    setDate(today, 'today')
-  );
-  takeAll(/\bnext week\b/, () => setDate(addDays(today, 7), 'next week'));
-  takeAll(/\bnext month\b/, () =>
-    setDate(
-      new Date(today.getFullYear(), today.getMonth() + 1, 1),
-      'next month'
-    )
-  );
-  takeAll(/\b(?:in|within)\s+(\d{1,3})\s+(days?|weeks?|months?)\b/, (match) => {
-    const amount = Number(match[1]);
-    const unit = match[2];
-    setDate(
-      unit.startsWith('month')
-        ? new Date(
-            today.getFullYear(),
-            today.getMonth() + amount,
-            today.getDate()
-          )
-        : addDays(today, unit.startsWith('week') ? amount * 7 : amount),
-      `in ${amount} ${unit}`
-    );
-  });
-  takeAll(
-    /\b(?:available|free)(?: for (?:a |the )?(?:new )?(?:project|assignment|demand))?\b/,
-    () => {
-      if (
-        filters.minAvailablePct === null &&
-        !filters.allocationStatuses.length
-      ) {
-        filters.minAvailablePct = 50;
-        recognized.push('At least 50% free');
-        notes.push(
-          '"Available" without a percentage is read as at least 50% free on the needed-from date.'
-        );
-      }
-    }
-  );
-
-  SENIORITY_PATTERNS.forEach(([pattern, value]) =>
-    takeAll(pattern, () => {
-      if (!filters.seniority.includes(value)) {
-        filters.seniority.push(value);
-        recognized.push(`Seniority: ${value}`);
-      }
-    })
-  );
-  takeAll(/\b(?:most experienced|longest experience)\b/, () => {
-    sort = 'EXPERIENCE';
-  });
-  takeAll(/\b(?:applicants?|candidates? from recruiting|externals?)\b/, () => {
-    notes.push(
-      'External applicants are never part of employee search. See External applicants for recruiting figures.'
-    );
-  });
-  takeAll(new RegExp(`\\b${NUM}\\+?\\s*(?:years?|yrs)\\b`), (match) => {
-    if (filters.skills.length === 1 && !filters.skills[0].minYears) {
-      filters.skills[0].minYears = toNumber(match[1]);
-      recognized.push(
-        `${skillName(filters.skills[0].skillId)}: ${match[1]}+ years`
-      );
-    } else {
-      notes.push(
-        `"${match[0].trim()}" could not be tied to one skill, so it was ignored. Set years per skill in the criteria.`
-      );
-    }
-  });
-
-  const leftovers: string[] = [];
-  work
-    .split(/\s+/)
-    .filter(
-      (token) =>
-        token.length >= 2 && !STOPWORDS.has(token) && !/^[\d.+-]+$/.test(token)
-    )
-    .forEach((token) => {
-      if (token.length >= 4) {
-        const guess = SKILL_PHRASES.find(
-          (phrase) =>
-            !phrase.text.includes(' ') &&
-            phrase.text.length >= 4 &&
-            levenshtein(phrase.text, token) <= (token.length >= 7 ? 2 : 1)
-        );
-        if (guess) {
-          if (!filters.skills.some((item) => item.skillId === guess.value)) {
-            filters.skills.push({
-              skillId: guess.value,
-              minLevel: DEFAULT_MIN_LEVEL,
-              minYears: null,
-            });
-            recognized.push(
-              `${skillName(guess.value)} ≥ ${LEVEL_LABELS[DEFAULT_MIN_LEVEL]}`
-            );
-          }
-          notes.push(`Read "${token}" as ${skillName(guess.value)}.`);
-          return;
-        }
-      }
-      leftovers.push(token);
-    });
-  filters.text = leftovers.join(' ');
-  if (filters.text)
-    notes.push(
-      `Searched as free text (name, title, project): "${filters.text}". Remove it if it hides good matches.`
-    );
-  if (!recognized.length && !filters.text)
-    notes.push(
-      'Nothing specific was recognised. Showing everyone you can see.'
-    );
-
-  return {
-    filters,
-    sort,
-    notes,
-    recognized,
-    simple: !semantic && !filters.text,
-    demandId,
-  };
-};

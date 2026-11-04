@@ -8,7 +8,9 @@ export type SearchSort =
   | 'NAME'
   | 'AVAILABILITY'
   | 'TENURE'
-  | 'EXPERIENCE';
+  | 'EXPERIENCE'
+  | 'ROLL_OFF';
+export type WorkforceKind = 'EMPLOYEE' | 'B2B' | 'SUPPLIER';
 export type SkillEvidence = 'VALIDATED' | 'NOT_VERIFIED';
 // How a date-based metric was obtained: recorded start date, estimated from project history, or unknown.
 export type DateQuality = 'RECORDED' | 'ESTIMATED' | 'UNAVAILABLE';
@@ -18,6 +20,8 @@ export interface SkillCriterion {
   // 1 = Beginner ... 5 = Master
   minLevel: number;
   minYears: number | null;
+  // How minYears is compared: "more than 3 years" (default) or "at least 3 years".
+  yearsMode?: 'MORE_THAN' | 'AT_LEAST';
 }
 
 export interface SearchFilters {
@@ -38,6 +42,10 @@ export interface SearchFilters {
   countries: string[];
   seniority: Seniority[];
   verticalId: string | null;
+  // Empty = all contract types. Workforce statistics use EMPLOYEE only.
+  workforceTypes: WorkforceKind[];
+  // People whose current project ends within this many days (roll-off).
+  rollingOffWithinDays: number | null;
 }
 
 export type ApplicantAccess = 'NONE' | 'AGGREGATE' | 'LIST';
@@ -101,6 +109,7 @@ export interface CurrentProjectView {
   pct: number;
   since: string;
   tenureYears: number;
+  endDate: string | null;
 }
 
 export interface SearchResultRow {
@@ -154,7 +163,108 @@ export type InterpretationEngine =
   | 'RULES_ONLY'
   | 'FALLBACK_CONVENTIONAL';
 
+export type QueryIntent =
+  | 'EMPLOYEE_SEARCH'
+  | 'WORKFORCE_COUNT'
+  | 'WORKFORCE_PERCENTAGE'
+  | 'TECHNOLOGY_COMPARISON'
+  | 'PROJECT_TENURE'
+  | 'SKILL_DURATION'
+  | 'AVAILABILITY'
+  | 'DEMAND_MATCH';
+
+// What the backend must compute on top of the people list. Saved with a search so it can be re-run.
+export interface AnswerSpec {
+  intent: QueryIntent;
+  compareSkillIds?: string[];
+  demand?: StaffingDemand | null;
+}
+
+export interface AnswerRequest extends AnswerSpec {
+  filters: SearchFilters;
+}
+
+export interface PopulationInfo {
+  label: string;
+  definition: string;
+  size: number;
+  excluded: { label: string; count: number }[];
+}
+
+export interface StatLens {
+  key: string;
+  label: string;
+  definition: string;
+  count: number;
+  percentage: number;
+  isDefault: boolean;
+}
+
+export interface StatAnswer {
+  kind: 'STAT';
+  intent: QueryIntent;
+  headline: 'COUNT' | 'PERCENTAGE';
+  subject: string;
+  count: number;
+  percentage: number;
+  population: PopulationInfo;
+  lenses: StatLens[];
+  breakdown: { title: string; rows: { label: string; count: number; detail?: string }[] } | null;
+  notes: string[];
+  asOf: string;
+}
+
+export interface CompareRow {
+  skillId: string;
+  label: string;
+  count: number;
+  percentage: number;
+  advanced: number;
+  avgYears: number | null;
+  availableNow: number;
+}
+
+export interface CompareAnswer {
+  kind: 'COMPARE';
+  intent: QueryIntent;
+  population: PopulationInfo;
+  rows: CompareRow[];
+  both: number;
+  either: number;
+  notes: string[];
+  asOf: string;
+}
+
+export interface MatchAnswer {
+  kind: 'MATCH';
+  intent: QueryIntent;
+  demand: StaffingDemand;
+  evaluated: number;
+  eligibleCount: number;
+  notEligibleCount: number;
+  top: {
+    employeeId: string;
+    name: string;
+    title: string;
+    score: number;
+    availabilityLabel: string;
+    optionalMet: string[];
+    optionalMissing: string[];
+  }[];
+  notes: string[];
+}
+
+export type QueryAnswer = StatAnswer | CompareAnswer | MatchAnswer;
+
 export interface InterpretResponse {
+  intent: QueryIntent;
+  intentLabel: string;
+  // The structured instruction an LLM would return; shown to users so they can see what was understood.
+  structured: Record<string, unknown>;
+  answerSpec: AnswerSpec | null;
+  notUnderstood: string[];
+  language: 'EN' | 'SR';
+  query: string;
   filters: SearchFilters;
   sort: SearchSort;
   notes: string[];
@@ -176,6 +286,7 @@ export interface SavedSearch {
   filters: SearchFilters;
   sort: SearchSort;
   query: string | null;
+  answerSpec?: AnswerSpec | null;
   createdAt: string;
   updatedAt: string;
   lastRunAt: string | null;
@@ -187,6 +298,7 @@ export interface SavedSearchInput {
   filters: SearchFilters;
   sort: SearchSort;
   query: string | null;
+  answerSpec?: AnswerSpec | null;
 }
 
 export interface SearchHistoryEntry {
@@ -196,6 +308,7 @@ export interface SearchHistoryEntry {
   query: string | null;
   filters: SearchFilters;
   sort: SearchSort;
+  answerSpec?: AnswerSpec | null;
   executedAt: string;
   resultCount: number;
 }
@@ -355,10 +468,15 @@ export interface DemandCriterion {
 
 export type AvailabilityMode = 'HARD' | 'RANKING';
 
+export type DemandStatus = 'OPEN' | 'IN_SELECTION' | 'ON_HOLD';
+
 export interface StaffingDemand {
   id: string;
   code: string;
   title: string;
+  role: string;
+  status: DemandStatus;
+  createdDate: string;
   client: string;
   description: string;
   startDate: string;

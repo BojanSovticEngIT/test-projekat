@@ -6,6 +6,7 @@ import type {
   SearchMode,
   SearchSort,
   Seniority,
+  WorkforceKind,
 } from '../../types/intelligence.types';
 
 export const LEVEL_LABELS = [
@@ -41,6 +42,13 @@ export const SORT_LABELS: Record<SearchSort, string> = {
   AVAILABILITY: 'Availability',
   TENURE: 'Current project tenure',
   EXPERIENCE: 'Skill experience (years)',
+  ROLL_OFF: 'Current project ends first',
+};
+
+export const WORKFORCE_KIND_LABELS: Record<WorkforceKind, string> = {
+  EMPLOYEE: 'Employees',
+  B2B: 'B2B contractors',
+  SUPPLIER: 'Supplier staff',
 };
 
 export const yearsText = (
@@ -68,6 +76,8 @@ export const createEmptyFilters = (): SearchFilters => ({
   countries: [],
   seniority: [],
   verticalId: null,
+  workforceTypes: [],
+  rollingOffWithinDays: null,
 });
 
 export const isEmptyFilters = (filters: SearchFilters): boolean =>
@@ -153,6 +163,15 @@ export const QUICK_SEARCHES: QuickSearch[] = [
     }),
   },
   {
+    id: 'roll-off',
+    label: 'Rolling off in the next 90 days',
+    description: 'Current project ends soon, earliest first',
+    build: () => ({
+      filters: filtersWith({ rollingOffWithinDays: 90 }),
+      sort: 'ROLL_OFF',
+    }),
+  },
+  {
     id: 'project',
     label: 'People working on a project',
     description: 'Everyone currently assigned to the chosen project',
@@ -207,6 +226,10 @@ export const filtersFromParams = (
   }
   if (params.get('project')) {
     filters.currentProjectId = params.get('project');
+    any = true;
+  }
+  if (params.get('workforce') === 'EMPLOYEE') {
+    filters.workforceTypes = ['EMPLOYEE'];
     any = true;
   }
   if (params.get('text')) {

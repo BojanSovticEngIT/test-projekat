@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import useAuthStore from '@store/authStore';
 import { API_BASE_URL } from '../api/apiBaseUrl';
 import type {
@@ -26,11 +26,13 @@ import {
 } from './intelligenceCore';
 import {
   describeFilters,
-  parseQuery,
   sanitizeFilters,
   sanitizeSort,
   searchPeople,
 } from './intelligenceSearch';
+import { INTENT_LABELS, parseQuery } from './intelligenceInterpreter';
+import { answerQuery } from './intelligenceAnswers';
+import { sanitizeAnswerSpec } from './intelligenceStore';
 import {
   applicantTrend,
   applicantsForMonth,
@@ -179,9 +181,15 @@ export const intelligenceHandlers = [
     const query =
       typeof input.query === 'string' ? input.query.trim().slice(0, 500) : '';
     if (!query) return badRequest('Type what you are looking for.');
-    const parsed = parseQuery(query);
+    // Refinement: the previous question gives the context, the new text narrows or changes it.
+    const context =
+      typeof input.context === 'string' ? input.context.trim().slice(0, 500) : '';
+    const fullQuery = context ? `${context} ${query}` : query;
+    const parsed = parseQuery(fullQuery);
+    // Simulated model latency so the demo shows the "interpreting" state; the rules themselves are instant.
+    if (!parsed.simple) await delay(650);
     const pricing = getPricing();
-    const inputTokens = pricing.systemPromptTokens + estimateTokens(query);
+    const inputTokens = pricing.systemPromptTokens + estimateTokens(fullQuery);
     const outputTokens = estimateTokens(
       JSON.stringify({ filters: parsed.filters, sort: parsed.sort })
     );
@@ -219,6 +227,13 @@ export const intelligenceHandlers = [
       usage = { inputTokens, outputTokens, estimatedCostUsd: cost };
     }
     const response: InterpretResponse = {
+      intent: parsed.intent,
+      intentLabel: INTENT_LABELS[parsed.intent],
+      structured: parsed.structured,
+      answerSpec: parsed.answerSpec,
+      notUnderstood: parsed.notUnderstood,
+      language: parsed.language,
+      query: fullQuery,
       filters: parsed.filters,
       sort: parsed.sort,
       notes: parsed.notes,
@@ -229,6 +244,16 @@ export const intelligenceHandlers = [
       demandId: parsed.demandId,
     };
     return HttpResponse.json(response);
+  }),
+
+  // Deterministic statistics for an interpreted question (counts, percentages, comparison, matching summary).
+  http.post(`${BASE}/answer`, async ({ request }) => {
+    const access = authorize(request, (scope) => scope.canSearchPeople);
+    if (access.denied) return access.denied;
+    const answer = answerQuery(access.rule, await body(request));
+    return answer
+      ? HttpResponse.json(answer)
+      : badRequest('Nothing to calculate for this question.');
   }),
 
   // ---------------------------------------------------------------- saved searches and history
@@ -301,6 +326,7 @@ export const intelligenceHandlers = [
       query: typeof input.query === 'string' ? input.query.slice(0, 500) : null,
       filters,
       sort: sanitizeSort(input.sort),
+      answerSpec: sanitizeAnswerSpec(input.answerSpec),
       resultCount: Math.max(0, Math.round(Number(input.resultCount) || 0)),
     });
     recordUsage(access.user, MODE_USAGE[mode]);
